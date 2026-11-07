@@ -5,9 +5,252 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  DEALER
+  ADMIN
+}
+
+enum QueueStatus {
+  OPEN
+  CLOSED
+}
+
+enum QueueEntryStatus {
+  WAITING
+  OFFERED
+  BOOKED
+  LEFT
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  userId       String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String
+  phone        String
+  role         UserRole @default(CUSTOMER)
+  isActive     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dealerProfile Dealer?
+
+  queueEntries QueueEntry[] @relation("CustomerEntries")
+  bookings     Booking[]    @relation("CustomerBookings")
+  auditLogs    AuditLog[]
+}
+
+model Dealer {
+  dealerId   String  @id @default(uuid()) @db.Uuid
+  userId     String  @unique @db.Uuid
+  dealerName String
+  city       String
+  address    String  @db.Text
+  verified   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  inventory Inventory[]
+  offers    Offer[]
+  bookings  Booking[]
+
+  preferredQueueEntries QueueEntry[]
+}
+
+model CarModel {
+  carModelId String  @id @default(uuid()) @db.Uuid
+  brand      String
+  model      String
+  imageUrl   String?
+
+  createdAt DateTime @default(now())
+
+  inventory Inventory[]
+  queue     Queue[]
+
+  @@unique([brand, model])
+}
+
+model Inventory {
+  inventoryId String @id @default(uuid()) @db.Uuid
+
+  dealerId   String @db.Uuid
+  carModelId String @db.Uuid
+
+  variant String
+  color   String
+
+  totalUnits     Int
+  availableUnits Int
+
+  exShowroom  Decimal @db.Decimal(12, 2)
+  insurance   Decimal @db.Decimal(12, 2)
+  rto         Decimal @db.Decimal(12, 2)
+  accessories Decimal @db.Decimal(12, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dealer   Dealer   @relation(fields: [dealerId], references: [dealerId], onDelete: Restrict)
+  carModel CarModel @relation(fields: [carModelId], references: [carModelId], onDelete: Restrict)
+
+  offers   Offer[]
+  bookings Booking[]
+
+  @@unique([dealerId, carModelId, variant, color])
+  @@index([carModelId, variant])
+  @@index([dealerId, active])
+}
+
+model Queue {
+  queueId    String      @id @default(uuid()) @db.Uuid
+  carModelId String      @db.Uuid
+  variant    String
+  city       String
+  status     QueueStatus @default(OPEN)
+
+  createdAt DateTime     @default(now())
+  carModel  CarModel     @relation(fields: [carModelId], references: [carModelId], onDelete: Restrict)
+  entries   QueueEntry[]
+
+  @@unique([carModelId, variant, city])
+  @@index([city, status])
+}
+
+model QueueEntry {
+  entryId String @id @default(uuid()) @db.Uuid
+
+  queueId    String @db.Uuid
+  customerId String @db.Uuid
+
+  preferredDealerId String? @db.Uuid
+
+  colorPreference String?
+  maxBudget       Decimal? @db.Decimal(12, 2)
+
+  status QueueEntryStatus @default(WAITING)
+
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  queue           Queue   @relation(fields: [queueId], references: [queueId], onDelete: Restrict)
+  customer        User    @relation("CustomerEntries", fields: [customerId], references: [userId], onDelete: Restrict)
+  preferredDealer Dealer? @relation(fields: [preferredDealerId], references: [dealerId], onDelete: SetNull)
+
+  offers  Offer[]
+  booking Booking?
+
+  @@unique([queueId, customerId])
+  @@index([queueId, status, joinedAt])
+  @@index([customerId, status])
+  @@index([preferredDealerId])
+}
+
+model Offer {
+  offerId String @id @default(uuid()) @db.Uuid
+
+  queueEntryId String @db.Uuid
+  inventoryId  String @db.Uuid
+  dealerId     String @db.Uuid
+
+  exShowroom  Decimal @db.Decimal(12, 2)
+  insurance   Decimal @db.Decimal(12, 2)
+  rto         Decimal @db.Decimal(12, 2)
+  accessories Decimal @db.Decimal(12, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+
+  totalPrice Decimal @db.Decimal(12, 2)
+
+  status    OfferStatus @default(PENDING)
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  queueEntry QueueEntry @relation(fields: [queueEntryId], references: [entryId], onDelete: Restrict)
+  inventory  Inventory  @relation(fields: [inventoryId], references: [inventoryId], onDelete: Restrict)
+  dealer     Dealer     @relation(fields: [dealerId], references: [dealerId], onDelete: Restrict)
+
+  booking Booking?
+
+  @@unique([queueEntryId, dealerId])
+  @@index([queueEntryId, status])
+  @@index([dealerId, status])
+  @@index([expiresAt])
+}
+
+model Booking {
+  bookingId    String @id @default(uuid()) @db.Uuid
+  offerId      String @unique @db.Uuid
+  queueEntryId String @unique @db.Uuid
+  customerId   String @db.Uuid
+  dealerId     String @db.Uuid
+  inventoryId  String @db.Uuid
+
+  priceSnapshot Json
+  totalPrice    Decimal @db.Decimal(12, 2)
+
+  status BookingStatus @default(CONFIRMED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offer Offer @relation(fields: [offerId], references: [offerId], onDelete: Restrict)
+
+  queueEntry QueueEntry @relation(fields: [queueEntryId], references: [entryId], onDelete: Restrict)
+
+  customer User @relation("CustomerBookings", fields: [customerId], references: [userId], onDelete: Restrict)
+
+  dealer Dealer @relation(fields: [dealerId], references: [dealerId], onDelete: Restrict)
+
+  inventory Inventory @relation(fields: [inventoryId], references: [inventoryId], onDelete: Restrict)
+
+  @@index([customerId, status])
+  @@index([dealerId, status])
+}
+
+model AuditLog {
+  logId String @id @default(uuid()) @db.Uuid
+
+  actorId  String? @db.Uuid
+  action   String
+  entity   String
+  entityId String
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [userId], onDelete: SetNull)
+
+  @@index([entity, entityId, createdAt])
+  @@index([actorId, createdAt])
 }
