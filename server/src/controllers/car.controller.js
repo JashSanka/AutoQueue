@@ -86,4 +86,85 @@ const createCar = async (req, res) => {
     }
 };
 
-module.exports = { createCar };
+/**
+ * GET /api/cars
+ * Any authenticated user – list all catalogue entries.
+ */
+const getAllCars = async (req, res) => {
+    try {
+        const cars = await prisma.carModel.findMany({
+            orderBy: [{ brand: "asc" }, { model: "asc" }],
+            select: {
+                carModelId: true,
+                brand: true,
+                model: true,
+                imageUrl: true,
+                createdAt: true
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            count: cars.length,
+            cars
+        });
+    } catch (error) {
+        console.error("Get all cars error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to fetch cars"
+        });
+    }
+};
+
+/**
+ * GET /api/cars/:carModelId
+ * Any authenticated user – get a single catalogue entry.
+ */
+const getCarById = async (req, res) => {
+    try {
+        const validation = carModelIdSchema.safeParse(req.params.carModelId);
+
+        if (!validation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid car model ID"
+            });
+        }
+
+        const { carModelId } = req.params;
+
+        const car = await prisma.carModel.findUnique({
+            where: { carModelId },
+            select: {
+                carModelId: true,
+                brand: true,
+                model: true,
+                imageUrl: true,
+                createdAt: true
+            }
+        });
+
+        if (!car) {
+            return res.status(404).json({
+                success: false,
+                message: "Car not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            car
+        });
+    } catch (error) {
+        console.error("Get car by ID error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to fetch car"
+        });
+    }
+};
+
+module.exports = { createCar, getAllCars, getCarById };
