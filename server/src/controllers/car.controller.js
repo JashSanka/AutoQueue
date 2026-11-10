@@ -235,4 +235,76 @@ const updateCar = async (req, res) => {
     }
 };
 
-module.exports = { createCar, getAllCars, getCarById, updateCar };
+/**
+ * DELETE /api/cars/:carModelId
+ * ADMIN only – delete a catalogue entry (blocked if referenced by Inventory or Queue).
+ */
+const deleteCar = async (req, res) => {
+    try {
+        const validation = carModelIdSchema.safeParse(req.params.carModelId);
+
+        if (!validation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid car model ID"
+            });
+        }
+
+        const { carModelId } = req.params;
+
+        const existing = await prisma.carModel.findUnique({
+            where: { carModelId },
+            include: {
+                _count: {
+                    select: {
+                        inventory: true,
+                        queue: true
+                    }
+                }
+            }
+        });
+
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: "Car not found"
+            });
+        }
+
+        const { inventory: inventoryCount, queue: queueCount } = existing._count;
+
+        if (inventoryCount > 0 || queueCount > 0) {
+            return res.status(409).json({
+                success: false,
+                message: "Cannot delete this car because it is referenced by existing inventory or queue records",
+                references: {
+                    inventoryRecords: inventoryCount,
+                    queueRecords: queueCount
+                }
+            });
+        }
+
+        await prisma.carModel.delete({ where: { carModelId } });
+
+        return res.status(200).json({
+            success: true,
+            message: "Car deleted from catalogue"
+        });
+    } catch (error) {
+        console.error("Delete car error:", error);
+
+        if (error.code === "P2003") {
+            return res.status(409).json({
+                success: false,
+                message: "Cannot delete this car because it is still referenced by other records"
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to delete car"
+        });
+    }
+};
+
+module.exports = { createCar, getAllCars, getCarById, updateCar, deleteCar };
