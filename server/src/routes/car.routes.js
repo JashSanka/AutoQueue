@@ -4,7 +4,8 @@ const router = express.Router();
 const {
     createCar,
     getAllCars,
-    getCarById
+    getCarById,
+    updateCar
 } = require("../controllers/car.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -16,5 +17,6 @@ router.get("/:carModelId", authenticate, getCarById);
 
 // ADMIN only
 router.post("/", authenticate, authorize("ADMIN"), createCar);
+router.patch("/:carModelId", authenticate, authorize("ADMIN"), updateCar);
 
 module.exports = router;

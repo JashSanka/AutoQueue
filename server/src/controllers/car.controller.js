@@ -167,4 +167,72 @@ const getCarById = async (req, res) => {
     }
 };
 
-module.exports = { createCar, getAllCars, getCarById };
+/**
+ * PATCH /api/cars/:carModelId
+ * ADMIN only – partially update a catalogue entry.
+ */
+const updateCar = async (req, res) => {
+    try {
+        const idValidation = carModelIdSchema.safeParse(req.params.carModelId);
+
+        if (!idValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid car model ID"
+            });
+        }
+
+        const bodyValidation = updateCarSchema.safeParse(req.body);
+
+        if (!bodyValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid request body",
+                errors: bodyValidation.error.issues.map((issue) => ({
+                    field: issue.path[0] ?? "_",
+                    message: issue.message
+                }))
+            });
+        }
+
+        const { carModelId } = req.params;
+
+        const existing = await prisma.carModel.findUnique({
+            where: { carModelId }
+        });
+
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: "Car not found"
+            });
+        }
+
+        const updated = await prisma.carModel.update({
+            where: { carModelId },
+            data: bodyValidation.data
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Car updated successfully",
+            car: safeCarFields(updated)
+        });
+    } catch (error) {
+        console.error("Update car error:", error);
+
+        if (error.code === "P2002") {
+            return res.status(409).json({
+                success: false,
+                message: "A car with the same brand and model already exists"
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to update car"
+        });
+    }
+};
+
+module.exports = { createCar, getAllCars, getCarById, updateCar };
