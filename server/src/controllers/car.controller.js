@@ -3,12 +3,14 @@ const { z } = require("zod");
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
-const carModelIdSchema = z.string().uuid("Invalid car model ID");
+const carModelIdSchema = z.uuid({
+    message: "Invalid car model ID"
+});
 
 const createCarSchema = z.object({
     brand: z.string().trim().min(1, "Brand is required"),
     model: z.string().trim().min(1, "Model is required"),
-    imageUrl: z.url("imageUrl must be a valid URL").optional()
+    imageUrl: z.url({ message: "imageUrl must be a valid URL" }).nullable().optional()
 });
 
 const updateCarSchema = z
@@ -133,7 +135,7 @@ const getCarById = async (req, res) => {
             });
         }
 
-        const { carModelId } = req.params;
+        const carModelId=validation.data;
 
         const car = await prisma.carModel.findUnique({
             where: { carModelId },
@@ -195,7 +197,7 @@ const updateCar = async (req, res) => {
             });
         }
 
-        const { carModelId } = req.params;
+        const carModelId = idValidation.data;
 
         const existing = await prisma.carModel.findUnique({
             where: { carModelId }
@@ -250,7 +252,7 @@ const deleteCar = async (req, res) => {
             });
         }
 
-        const { carModelId } = req.params;
+        const carModelId = validation.data;
 
         const existing = await prisma.carModel.findUnique({
             where: { carModelId },
