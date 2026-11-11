@@ -45,14 +45,14 @@ const inventoryIdSchema = z.uuid({
 
 const createInventorySchema = z.object({
     carModelId: z.uuid({ message: "Invalid car model ID" }),
-    variant: z.string({ required_error: "Variant is required" }).trim().min(1, "Variant must not be empty"),
-    color: z.string({ required_error: "Color is required" }).trim().min(1, "Color must not be empty"),
-    totalUnits: z.number({ required_error: "totalUnits is required" }).int("totalUnits must be an integer").min(0, "totalUnits cannot be negative"),
-    availableUnits: z.number({ required_error: "availableUnits is required" }).int("availableUnits must be an integer").min(0, "availableUnits cannot be negative"),
-    exShowroom: z.number({ required_error: "exShowroom is required" }).min(0, "exShowroom cannot be negative"),
-    insurance: z.number({ required_error: "insurance is required" }).min(0, "insurance cannot be negative"),
-    rto: z.number({ required_error: "rto is required" }).min(0, "rto cannot be negative"),
-    accessories: z.number({ required_error: "accessories is required" }).min(0, "accessories cannot be negative"),
+    variant: z.string({ error: "Variant is required" }).trim().min(1, "Variant must not be empty"),
+    color: z.string({ error: "Color is required" }).trim().min(1, "Color must not be empty"),
+    totalUnits: z.number({ error: "totalUnits is required" }).int("totalUnits must be an integer").min(0, "totalUnits cannot be negative"),
+    availableUnits: z.number({ error: "availableUnits is required" }).int("availableUnits must be an integer").min(0, "availableUnits cannot be negative"),
+    exShowroom: z.number({ error: "exShowroom is required" }).min(0, "exShowroom cannot be negative"),
+    insurance: z.number({ error: "insurance is required" }).min(0, "insurance cannot be negative"),
+    rto: z.number({ error: "rto is required" }).min(0, "rto cannot be negative"),
+    accessories: z.number({ error: "accessories is required" }).min(0, "accessories cannot be negative"),
     discount: z.number().min(0, "discount cannot be negative").default(0)
 }).superRefine((data, ctx) => {
     if (data.availableUnits > data.totalUnits) {
@@ -427,25 +427,15 @@ const updateInventory = async (req, res) => {
         }
 
         // Atomic update with optimistic concurrency check
+        // Atomic update with optimistic concurrency check
         const updated = await prisma.$transaction(async (tx) => {
-            const current = await tx.inventory.findUnique({
-                where: { inventoryId }
-            });
 
-            if (!current || current.dealerId !== dealerId) {
-                const err = new Error("NOT_FOUND");
-                err.statusCode = 404;
-                throw err;
-            }
-
-            if (current.updatedAt.getTime() !== existing.updatedAt.getTime()) {
-                const err = new Error("CONCURRENT_UPDATE");
-                err.statusCode = 409;
-                throw err;
-            }
-
-            return await tx.inventory.update({
-                where: { inventoryId },
+            const result = await tx.inventory.updateMany({
+                where: {
+                    inventoryId,
+                    dealerId,
+                    updatedAt: existing.updatedAt
+                },
                 data: {
                     ...(updates.variant !== undefined && { variant: finalVariant }),
                     ...(updates.color !== undefined && { color: finalColor }),
@@ -456,7 +446,17 @@ const updateInventory = async (req, res) => {
                     ...(updates.rto !== undefined && { rto: finalRto }),
                     ...(updates.accessories !== undefined && { accessories: finalAccessories }),
                     ...(updates.discount !== undefined && { discount: finalDiscount })
-                },
+                }
+            });
+
+            if (result.count === 0) {
+                const err = new Error("CONCURRENT_UPDATE");
+                err.statusCode = 409;
+                throw err;
+            }
+
+            return await tx.inventory.findUnique({
+                where: { inventoryId },
                 include: {
                     carModel: {
                         select: {
@@ -508,8 +508,7 @@ const updateInventory = async (req, res) => {
 
 const updateStatusSchema = z.object({
     active: z.boolean({
-        required_error: "active is required",
-        invalid_type_error: "active must be a boolean"
+        error: "active must be a boolean"
     })
 });
 
