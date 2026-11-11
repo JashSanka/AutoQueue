@@ -4,7 +4,8 @@ const router = express.Router();
 const {
     createInventory,
     getMyInventory,
-    getInventoryById
+    getInventoryById,
+    updateInventory
 } = require("../controllers/inventory.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -35,6 +36,14 @@ router.get(
     authorize("DEALER"),
     dealerVerified,
     getInventoryById
+);
+
+router.patch(
+    "/:inventoryId",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    updateInventory
 );
 
 module.exports = router;
