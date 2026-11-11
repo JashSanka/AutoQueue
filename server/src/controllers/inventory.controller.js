@@ -506,11 +506,94 @@ const updateInventory = async (req, res) => {
     }
 };
 
+const updateStatusSchema = z.object({
+    active: z.boolean({
+        required_error: "active is required",
+        invalid_type_error: "active must be a boolean"
+    })
+});
+
+/**
+ * PATCH /api/inventory/:inventoryId/status
+ * Verified DEALER only – activate or deactivate inventory record.
+ */
+const updateInventoryStatus = async (req, res) => {
+    try {
+        const idValidation = inventoryIdSchema.safeParse(req.params.inventoryId);
+        if (!idValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid inventory ID"
+            });
+        }
+
+        const inventoryId = idValidation.data;
+        const dealerId = req.dealer.dealerId;
+
+        const bodyValidation = updateStatusSchema.safeParse(req.body);
+        if (!bodyValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid status update details",
+                errors: bodyValidation.error.issues.map((issue) => ({
+                    field: issue.path.join(".") || "active",
+                    message: issue.message
+                }))
+            });
+        }
+
+        const { active } = bodyValidation.data;
+
+        const existing = await prisma.inventory.findFirst({
+            where: {
+                inventoryId,
+                dealerId
+            }
+        });
+
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: "Inventory record not found"
+            });
+        }
+
+        const updated = await prisma.inventory.update({
+            where: { inventoryId },
+            data: { active },
+            include: {
+                carModel: {
+                    select: {
+                        carModelId: true,
+                        brand: true,
+                        model: true,
+                        imageUrl: true
+                    }
+                }
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: `Inventory ${active ? "activated" : "deactivated"} successfully`,
+            inventory: formatInventory(updated)
+        });
+    } catch (error) {
+        console.error("Update inventory status error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to update inventory status"
+        });
+    }
+};
+
 module.exports = {
     createInventory,
     getMyInventory,
     getInventoryById,
     updateInventory,
+    updateInventoryStatus,
     calculateTotalPrice,
     formatInventory,
     inventoryIdSchema

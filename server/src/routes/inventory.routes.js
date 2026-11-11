@@ -5,7 +5,8 @@ const {
     createInventory,
     getMyInventory,
     getInventoryById,
-    updateInventory
+    updateInventory,
+    updateInventoryStatus
 } = require("../controllers/inventory.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -36,6 +37,14 @@ router.get(
     authorize("DEALER"),
     dealerVerified,
     getInventoryById
+);
+
+router.patch(
+    "/:inventoryId/status",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    updateInventoryStatus
 );
 
 router.patch(
