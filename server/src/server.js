@@ -6,6 +6,7 @@ const authRoutes = require("./routes/auth.routes");
 const adminRoutes = require("./routes/admin.routes");
 const carRoutes = require("./routes/car.routes");
 const inventoryRoutes = require("./routes/inventory.routes");
+const queueRoutes = require("./routes/queue.routes");
 
 const PORT = 3000;
 
@@ -15,6 +16,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/cars", carRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/queues", queueRoutes);
 
 app.get("/health", (req, res) => {
     res.status(200).json({ message: "AutoQueue API running" });
