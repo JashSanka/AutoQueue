@@ -21,3 +21,4 @@ router.get("/:queueId/position", authenticate, authorize("CUSTOMER"), getQueuePo
 router.delete("/:queueId/leave", authenticate, authorize("CUSTOMER"), leaveQueue);
 
 module.exports = router;
+

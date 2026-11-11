@@ -28,7 +28,6 @@ const joinQueueSchema = z.object({
     maxBudget: z
         .number()
         .nonnegative("maxBudget cannot be negative")
-        .finite()
         .nullable()
         .optional(),
 });
