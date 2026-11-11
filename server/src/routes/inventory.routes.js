@@ -2,7 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const {
-    createInventory
+    createInventory,
+    getMyInventory,
+    getInventoryById
 } = require("../controllers/inventory.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -16,6 +18,23 @@ router.post(
     authorize("DEALER"),
     dealerVerified,
     createInventory
+);
+
+// Route ordering: /my must come before /:inventoryId
+router.get(
+    "/my",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    getMyInventory
+);
+
+router.get(
+    "/:inventoryId",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    getInventoryById
 );
 
 module.exports = router;

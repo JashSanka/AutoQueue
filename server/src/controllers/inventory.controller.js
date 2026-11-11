@@ -190,8 +190,106 @@ const createInventory = async (req, res) => {
     }
 };
 
+/**
+ * GET /api/inventory/my
+ * Verified DEALER only – list all inventory items belonging to the authenticated dealer.
+ */
+const getMyInventory = async (req, res) => {
+    try {
+        const dealerId = req.dealer.dealerId;
+
+        const items = await prisma.inventory.findMany({
+            where: { dealerId },
+            include: {
+                carModel: {
+                    select: {
+                        carModelId: true,
+                        brand: true,
+                        model: true,
+                        imageUrl: true
+                    }
+                }
+            },
+            orderBy: [{ createdAt: "desc" }]
+        });
+
+        const formatted = items.map(formatInventory);
+
+        return res.status(200).json({
+            success: true,
+            count: formatted.length,
+            inventory: formatted
+        });
+    } catch (error) {
+        console.error("Get my inventory error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to fetch inventory"
+        });
+    }
+};
+
+/**
+ * GET /api/inventory/:inventoryId
+ * Verified DEALER only – fetch inventory details by ID (scoped to authenticated dealer).
+ */
+const getInventoryById = async (req, res) => {
+    try {
+        const validation = inventoryIdSchema.safeParse(req.params.inventoryId);
+
+        if (!validation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid inventory ID"
+            });
+        }
+
+        const inventoryId = validation.data;
+        const dealerId = req.dealer.dealerId;
+
+        const item = await prisma.inventory.findFirst({
+            where: {
+                inventoryId,
+                dealerId
+            },
+            include: {
+                carModel: {
+                    select: {
+                        carModelId: true,
+                        brand: true,
+                        model: true,
+                        imageUrl: true
+                    }
+                }
+            }
+        });
+
+        if (!item) {
+            return res.status(404).json({
+                success: false,
+                message: "Inventory record not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            inventory: formatInventory(item)
+        });
+    } catch (error) {
+        console.error("Get inventory by ID error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to fetch inventory details"
+        });
+    }
+};
+
 module.exports = {
     createInventory,
+    getMyInventory,
+    getInventoryById,
     calculateTotalPrice,
     formatInventory,
     inventoryIdSchema
