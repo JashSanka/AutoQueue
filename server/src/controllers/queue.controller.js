@@ -80,7 +80,7 @@ const joinQueue = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Validation failed",
-                errors: parsed.error.errors.map((e) => ({
+                errors: parsed.error.issues.map((e) => ({
                     field: e.path.join("."),
                     message: e.message,
                 })),
