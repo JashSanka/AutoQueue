@@ -588,12 +588,95 @@ const updateInventoryStatus = async (req, res) => {
     }
 };
 
+const browseInventoryQuerySchema = z.object({
+    carModelId: z.uuid({ message: "Invalid carModelId query parameter" }).optional(),
+    city: z.string().trim().min(1, "city must not be empty").optional(),
+    variant: z.string().trim().min(1, "variant must not be empty").optional(),
+    color: z.string().trim().min(1, "color must not be empty").optional()
+});
+
+/**
+ * GET /api/inventory
+ * Any authenticated user – browse active inventory with available stock from verified dealers.
+ */
+const browseInventory = async (req, res) => {
+    try {
+        const queryValidation = browseInventoryQuerySchema.safeParse(req.query);
+
+        if (!queryValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid query parameters",
+                errors: queryValidation.error.issues.map((issue) => ({
+                    field: issue.path.join(".") || "_",
+                    message: issue.message
+                }))
+            });
+        }
+
+        const { carModelId, city, variant, color } = queryValidation.data;
+
+        const items = await prisma.inventory.findMany({
+            where: {
+                active: true,
+                availableUnits: { gt: 0 },
+                dealer: {
+                    verified: true,
+                    ...(city && { city: { contains: city, mode: "insensitive" } })
+                },
+                ...(carModelId && { carModelId }),
+                ...(variant && { variant: { contains: variant, mode: "insensitive" } }),
+                ...(color && { color: { contains: color, mode: "insensitive" } })
+            },
+            include: {
+                carModel: {
+                    select: {
+                        carModelId: true,
+                        brand: true,
+                        model: true,
+                        imageUrl: true
+                    }
+                },
+                dealer: {
+                    select: {
+                        dealerId: true,
+                        dealerName: true,
+                        city: true,
+                        address: true
+                    }
+                }
+            },
+            orderBy: [
+                { carModel: { brand: "asc" } },
+                { carModel: { model: "asc" } },
+                { createdAt: "desc" }
+            ]
+        });
+
+        const formatted = items.map(formatInventory);
+
+        return res.status(200).json({
+            success: true,
+            count: formatted.length,
+            inventory: formatted
+        });
+    } catch (error) {
+        console.error("Browse inventory error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to browse inventory"
+        });
+    }
+};
+
 module.exports = {
     createInventory,
     getMyInventory,
     getInventoryById,
     updateInventory,
     updateInventoryStatus,
+    browseInventory,
     calculateTotalPrice,
     formatInventory,
     inventoryIdSchema

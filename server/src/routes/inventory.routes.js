@@ -6,12 +6,20 @@ const {
     getMyInventory,
     getInventoryById,
     updateInventory,
-    updateInventoryStatus
+    updateInventoryStatus,
+    browseInventory
 } = require("../controllers/inventory.controller");
 
 const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
 const dealerVerified = require("../middleware/dealerVerified");
+
+// Any authenticated user (CUSTOMER, DEALER, ADMIN)
+router.get(
+    "/",
+    authenticate,
+    browseInventory
+);
 
 // Verified DEALER only
 router.post(
