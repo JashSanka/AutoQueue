@@ -13,24 +13,19 @@ const createOfferSchema = z.object({
     insurance: z
         .number({ error: "insurance is required" })
         .nonnegative("insurance cannot be negative")
-        .finite(),
+        ,
     rto: z
         .number({ error: "rto is required" })
         .nonnegative("rto cannot be negative")
-        .finite(),
+        ,
     accessories: z
         .number({ error: "accessories is required" })
         .nonnegative("accessories cannot be negative")
-        .finite(),
+        ,
     discount: z
         .number()
         .nonnegative("discount cannot be negative")
-        .finite()
         .default(0),
-    expiresAt: z
-        .string()
-        .datetime({ message: "expiresAt must be a valid ISO datetime string" })
-        .optional(),
 });
 
 const updateOfferSchema = z
@@ -38,22 +33,18 @@ const updateOfferSchema = z
         insurance: z
             .number()
             .nonnegative("insurance cannot be negative")
-            .finite()
             .optional(),
         rto: z
             .number()
             .nonnegative("rto cannot be negative")
-            .finite()
             .optional(),
         accessories: z
             .number()
             .nonnegative("accessories cannot be negative")
-            .finite()
             .optional(),
         discount: z
             .number()
             .nonnegative("discount cannot be negative")
-            .finite()
             .optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
@@ -324,7 +315,6 @@ const createOffer = async (req, res) => {
             rto,
             accessories,
             discount,
-            expiresAt,
         } = parsed.data;
 
         const dealerId = req.dealer.dealerId;
@@ -469,18 +459,8 @@ const createOffer = async (req, res) => {
         }
 
         // Expiry calculation
-        let expDate;
-        if (expiresAt) {
-            expDate = new Date(expiresAt);
-            if (isNaN(expDate.getTime()) || expDate <= new Date()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "expiresAt must be a valid future date",
-                });
-            }
-        } else {
-            expDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // default 24 hours
-        }
+        // Set offer expiry to 24 hours from creation
+        const expDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
         // Atomically create offer and update QueueEntry to OFFERED in a transaction
         const created = await prisma.$transaction(async (tx) => {
