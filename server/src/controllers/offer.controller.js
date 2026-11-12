@@ -33,6 +33,33 @@ const createOfferSchema = z.object({
         .optional(),
 });
 
+const updateOfferSchema = z
+    .object({
+        insurance: z
+            .number()
+            .nonnegative("insurance cannot be negative")
+            .finite()
+            .optional(),
+        rto: z
+            .number()
+            .nonnegative("rto cannot be negative")
+            .finite()
+            .optional(),
+        accessories: z
+            .number()
+            .nonnegative("accessories cannot be negative")
+            .finite()
+            .optional(),
+        discount: z
+            .number()
+            .nonnegative("discount cannot be negative")
+            .finite()
+            .optional(),
+    })
+    .refine((data) => Object.keys(data).length > 0, {
+        message: "At least one pricing component must be provided for update",
+    });
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function calculateTotalPrice({ exShowroom, insurance, rto, accessories, discount }) {
@@ -570,10 +597,334 @@ const getMyOffers = async (req, res) => {
     }
 };
 
+/**
+ * PATCH /api/offers/:offerId
+ * Dealer updates pricing components of an existing PENDING offer.
+ */
+const updateOffer = async (req, res) => {
+    try {
+        const idResult = offerIdSchema.safeParse(req.params.offerId);
+        if (!idResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid offer ID",
+            });
+        }
+        const offerId = idResult.data;
+
+        // Disallow direct modification of forbidden fields
+        if (
+            req.body.status !== undefined ||
+            req.body.totalPrice !== undefined ||
+            req.body.dealerId !== undefined ||
+            req.body.queueEntryId !== undefined ||
+            req.body.inventoryId !== undefined ||
+            req.body.exShowroom !== undefined
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Only pricing components (insurance, rto, accessories, discount) can be updated",
+            });
+        }
+
+        const parsed = updateOfferSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: parsed.error.issues.map((e) => ({
+                    field: e.path.join("."),
+                    message: e.message,
+                })),
+            });
+        }
+
+        const offer = await prisma.offer.findUnique({
+            where: { offerId },
+            include: {
+                queueEntry: true,
+            },
+        });
+
+        if (!offer) {
+            return res.status(404).json({
+                success: false,
+                message: "Offer not found",
+            });
+        }
+
+        if (offer.dealerId !== req.dealer.dealerId) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to update this offer",
+            });
+        }
+
+        // Check expiration first
+        const checkedOffer = await checkAndExpireOffer(offer);
+        if (checkedOffer.status !== "PENDING") {
+            return res.status(409).json({
+                success: false,
+                message: `Cannot update offer with status ${checkedOffer.status}. Only PENDING offers can be updated`,
+            });
+        }
+
+        const { insurance, rto, accessories, discount } = parsed.data;
+
+        const ex = new Prisma.Decimal(offer.exShowroom.toString());
+        const ins =
+            insurance !== undefined
+                ? new Prisma.Decimal(insurance.toString())
+                : offer.insurance;
+        const r =
+            rto !== undefined
+                ? new Prisma.Decimal(rto.toString())
+                : offer.rto;
+        const acc =
+            accessories !== undefined
+                ? new Prisma.Decimal(accessories.toString())
+                : offer.accessories;
+        const disc =
+            discount !== undefined
+                ? new Prisma.Decimal(discount.toString())
+                : offer.discount;
+
+        const newTotalPrice = ex.plus(ins).plus(r).plus(acc).minus(disc);
+
+        if (newTotalPrice.lessThan(0)) {
+            return res.status(400).json({
+                success: false,
+                message: "Updated total price cannot be negative",
+            });
+        }
+
+        // Verify customer's maxBudget
+        if (offer.queueEntry.maxBudget != null) {
+            const maxBudget = new Prisma.Decimal(offer.queueEntry.maxBudget.toString());
+            if (newTotalPrice.greaterThan(maxBudget)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Updated total price (${newTotalPrice.toString()}) exceeds customer's maximum budget (${maxBudget.toString()})`,
+                });
+            }
+        }
+
+        const updated = await prisma.offer.update({
+            where: { offerId },
+            data: {
+                ...(insurance !== undefined && { insurance: ins }),
+                ...(rto !== undefined && { rto: r }),
+                ...(accessories !== undefined && { accessories: acc }),
+                ...(discount !== undefined && { discount: disc }),
+                totalPrice: newTotalPrice,
+            },
+            include: {
+                inventory: {
+                    select: {
+                        inventoryId: true,
+                        variant: true,
+                        color: true,
+                    },
+                },
+                dealer: {
+                    select: {
+                        dealerId: true,
+                        dealerName: true,
+                        city: true,
+                        address: true,
+                    },
+                },
+                queueEntry: {
+                    include: {
+                        queue: {
+                            include: {
+                                carModel: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Offer updated successfully",
+            offer: formatOffer(updated),
+        });
+    } catch (err) {
+        console.error("updateOffer error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while updating the offer",
+        });
+    }
+};
+
+/**
+ * GET /api/offers/queue/:queueId
+ * Customer views offers for their entry in the given queue.
+ */
+const getOffersByQueue = async (req, res) => {
+    try {
+        const idResult = queueIdSchema.safeParse(req.params.queueId);
+        if (!idResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid queue ID",
+            });
+        }
+        const queueId = idResult.data;
+        const customerId = req.user.userId;
+
+        // Verify customer has entry in this queue
+        const entry = await prisma.queueEntry.findUnique({
+            where: {
+                queueId_customerId: { queueId, customerId },
+            },
+        });
+
+        if (!entry) {
+            return res.status(404).json({
+                success: false,
+                message: "You do not have an entry in this queue",
+            });
+        }
+
+        const offers = await prisma.offer.findMany({
+            where: { queueEntryId: entry.entryId },
+            include: {
+                dealer: {
+                    select: {
+                        dealerId: true,
+                        dealerName: true,
+                        city: true,
+                        address: true,
+                    },
+                },
+                inventory: {
+                    select: {
+                        inventoryId: true,
+                        variant: true,
+                        color: true,
+                    },
+                },
+                queueEntry: {
+                    include: {
+                        queue: {
+                            include: {
+                                carModel: true,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        const checkedOffers = [];
+        for (const offer of offers) {
+            const checked = await checkAndExpireOffer(offer);
+            checkedOffers.push(checked);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Offers retrieved successfully",
+            offers: checkedOffers.map(formatOffer),
+        });
+    } catch (err) {
+        console.error("getOffersByQueue error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while retrieving offers",
+        });
+    }
+};
+
+/**
+ * GET /api/offers/:offerId
+ * Customer views an individual offer.
+ */
+const getOfferById = async (req, res) => {
+    try {
+        const idResult = offerIdSchema.safeParse(req.params.offerId);
+        if (!idResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid offer ID",
+            });
+        }
+        const offerId = idResult.data;
+        const customerId = req.user.userId;
+
+        const offer = await prisma.offer.findUnique({
+            where: { offerId },
+            include: {
+                queueEntry: {
+                    include: {
+                        queue: {
+                            include: {
+                                carModel: true,
+                            },
+                        },
+                    },
+                },
+                dealer: {
+                    select: {
+                        dealerId: true,
+                        dealerName: true,
+                        city: true,
+                        address: true,
+                    },
+                },
+                inventory: {
+                    select: {
+                        inventoryId: true,
+                        variant: true,
+                        color: true,
+                    },
+                },
+            },
+        });
+
+        if (!offer) {
+            return res.status(404).json({
+                success: false,
+                message: "Offer not found",
+            });
+        }
+
+        // Ownership check
+        if (offer.queueEntry.customerId !== customerId) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to view this offer",
+            });
+        }
+
+        const checkedOffer = await checkAndExpireOffer(offer);
+
+        return res.status(200).json({
+            success: true,
+            message: "Offer details retrieved successfully",
+            offer: formatOffer(checkedOffer),
+        });
+    } catch (err) {
+        console.error("getOfferById error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while retrieving the offer",
+        });
+    }
+};
+
 module.exports = {
     getEligibleQueueEntries,
     createOffer,
     getMyOffers,
+    updateOffer,
+    getOffersByQueue,
+    getOfferById,
     checkAndExpireOffer,
     formatOffer,
     offerIdSchema,
