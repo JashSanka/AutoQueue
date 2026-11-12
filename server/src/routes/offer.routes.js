@@ -3,6 +3,8 @@ const router = express.Router();
 
 const {
     getEligibleQueueEntries,
+    createOffer,
+    getMyOffers,
 } = require("../controllers/offer.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -16,6 +18,22 @@ router.get(
     authorize("DEALER"),
     dealerVerified,
     getEligibleQueueEntries
+);
+
+router.get(
+    "/my",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    getMyOffers
+);
+
+router.post(
+    "/",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    createOffer
 );
 
 module.exports = router;

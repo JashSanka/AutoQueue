@@ -7,6 +7,32 @@ const { z } = require("zod");
 const offerIdSchema = z.uuid({ message: "Invalid offer ID" });
 const queueIdSchema = z.uuid({ message: "Invalid queue ID" });
 
+const createOfferSchema = z.object({
+    queueEntryId: z.uuid({ message: "Invalid queue entry ID" }),
+    inventoryId: z.uuid({ message: "Invalid inventory ID" }),
+    insurance: z
+        .number({ error: "insurance is required" })
+        .nonnegative("insurance cannot be negative")
+        .finite(),
+    rto: z
+        .number({ error: "rto is required" })
+        .nonnegative("rto cannot be negative")
+        .finite(),
+    accessories: z
+        .number({ error: "accessories is required" })
+        .nonnegative("accessories cannot be negative")
+        .finite(),
+    discount: z
+        .number()
+        .nonnegative("discount cannot be negative")
+        .finite()
+        .default(0),
+    expiresAt: z
+        .string()
+        .datetime({ message: "expiresAt must be a valid ISO datetime string" })
+        .optional(),
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function calculateTotalPrice({ exShowroom, insurance, rto, accessories, discount }) {
@@ -16,6 +42,106 @@ function calculateTotalPrice({ exShowroom, insurance, rto, accessories, discount
     const acc = new Prisma.Decimal(accessories.toString());
     const disc = new Prisma.Decimal((discount ?? 0).toString());
     return ex.plus(ins).plus(r).plus(acc).minus(disc);
+}
+
+/**
+ * Lazy offer expiration check.
+ * If offer is PENDING and expired, transitions status to EXPIRED.
+ * If no other valid pending offers remain for the queue entry, reverts QueueEntry to WAITING.
+ */
+async function checkAndExpireOffer(offer, tx = prisma) {
+    if (offer.status === "PENDING" && new Date(offer.expiresAt) < new Date()) {
+        const updated = await tx.offer.update({
+            where: { offerId: offer.offerId },
+            data: { status: "EXPIRED" },
+        });
+
+        const otherPendingCount = await tx.offer.count({
+            where: {
+                queueEntryId: offer.queueEntryId,
+                offerId: { not: offer.offerId },
+                status: "PENDING",
+                expiresAt: { gt: new Date() },
+            },
+        });
+
+        if (otherPendingCount === 0) {
+            const entry = await tx.queueEntry.findUnique({
+                where: { entryId: offer.queueEntryId },
+            });
+            if (entry && entry.status === "OFFERED") {
+                await tx.queueEntry.update({
+                    where: { entryId: offer.queueEntryId },
+                    data: { status: "WAITING" },
+                });
+            }
+        }
+
+        return { ...offer, status: "EXPIRED" };
+    }
+    return offer;
+}
+
+function formatOffer(offer) {
+    return {
+        offerId: offer.offerId,
+        queueEntryId: offer.queueEntryId,
+        inventoryId: offer.inventoryId,
+        dealerId: offer.dealerId,
+        exShowroom: offer.exShowroom.toString(),
+        insurance: offer.insurance.toString(),
+        rto: offer.rto.toString(),
+        accessories: offer.accessories.toString(),
+        discount: offer.discount.toString(),
+        totalPrice: offer.totalPrice.toString(),
+        status: offer.status,
+        expiresAt: offer.expiresAt,
+        createdAt: offer.createdAt,
+        updatedAt: offer.updatedAt,
+        ...(offer.dealer && {
+            dealer: {
+                dealerId: offer.dealer.dealerId,
+                dealerName: offer.dealer.dealerName,
+                city: offer.dealer.city,
+                address: offer.dealer.address,
+            },
+        }),
+        ...(offer.inventory && {
+            inventory: {
+                inventoryId: offer.inventory.inventoryId,
+                variant: offer.inventory.variant,
+                color: offer.inventory.color,
+            },
+        }),
+        ...(offer.queueEntry && {
+            queueEntry: {
+                entryId: offer.queueEntry.entryId,
+                queueId: offer.queueEntry.queueId,
+                status: offer.queueEntry.status,
+                colorPreference: offer.queueEntry.colorPreference,
+                maxBudget: offer.queueEntry.maxBudget
+                    ? offer.queueEntry.maxBudget.toString()
+                    : null,
+                joinedAt: offer.queueEntry.joinedAt,
+                ...(offer.queueEntry.queue && {
+                    queue: {
+                        queueId: offer.queueEntry.queue.queueId,
+                        variant: offer.queueEntry.queue.variant,
+                        city: offer.queueEntry.queue.city,
+                        status: offer.queueEntry.queue.status,
+                        ...(offer.queueEntry.queue.carModel && {
+                            carModel: {
+                                carModelId: offer.queueEntry.queue.carModel.carModelId,
+                                brand: offer.queueEntry.queue.carModel.brand,
+                                model: offer.queueEntry.queue.carModel.model,
+                                imageUrl: offer.queueEntry.queue.carModel.imageUrl,
+                            },
+                        }),
+                    },
+                }),
+            },
+        }),
+    };
 }
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
@@ -146,6 +272,310 @@ const getEligibleQueueEntries = async (req, res) => {
     }
 };
 
+/**
+ * POST /api/offers
+ * Dealer creates an offer for an eligible QueueEntry.
+ */
+const createOffer = async (req, res) => {
+    try {
+        const parsed = createOfferSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: parsed.error.issues.map((e) => ({
+                    field: e.path.join("."),
+                    message: e.message,
+                })),
+            });
+        }
+
+        const {
+            queueEntryId,
+            inventoryId,
+            insurance,
+            rto,
+            accessories,
+            discount,
+            expiresAt,
+        } = parsed.data;
+
+        const dealerId = req.dealer.dealerId;
+
+        // Verify Inventory belongs to this dealer
+        const inventory = await prisma.inventory.findUnique({
+            where: { inventoryId },
+            include: { carModel: true },
+        });
+
+        if (!inventory) {
+            return res.status(404).json({
+                success: false,
+                message: "Inventory not found",
+            });
+        }
+
+        if (inventory.dealerId !== dealerId) {
+            return res.status(403).json({
+                success: false,
+                message: "You can only create offers using your own inventory",
+            });
+        }
+
+        if (!inventory.active) {
+            return res.status(400).json({
+                success: false,
+                message: "Inventory is not active",
+            });
+        }
+
+        if (inventory.availableUnits <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "No available units in inventory",
+            });
+        }
+
+        // Verify QueueEntry exists
+        const entry = await prisma.queueEntry.findUnique({
+            where: { entryId: queueEntryId },
+            include: { queue: true },
+        });
+
+        if (!entry) {
+            return res.status(404).json({
+                success: false,
+                message: "Queue entry not found",
+            });
+        }
+
+        if (entry.status === "BOOKED" || entry.status === "LEFT") {
+            return res.status(409).json({
+                success: false,
+                message: `Queue entry is no longer accepting offers (current status: ${entry.status})`,
+            });
+        }
+
+        if (entry.queue.status !== "OPEN") {
+            return res.status(409).json({
+                success: false,
+                message: "Queue is closed and no longer accepting offers",
+            });
+        }
+
+        // Verify city match
+        if (entry.queue.city.toLowerCase() !== req.dealer.city.toLowerCase()) {
+            return res.status(403).json({
+                success: false,
+                message: "Dealer cannot submit offers outside their registered city",
+            });
+        }
+
+        // Verify preferred dealer restriction
+        if (entry.preferredDealerId && entry.preferredDealerId !== dealerId) {
+            return res.status(403).json({
+                success: false,
+                message: "Customer has specified a preferred dealer and cannot receive offers from other dealers",
+            });
+        }
+
+        // Verify car model and variant match
+        if (
+            inventory.carModelId !== entry.queue.carModelId ||
+            inventory.variant.toLowerCase() !== entry.queue.variant.toLowerCase()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Inventory car model and variant must match the queue",
+            });
+        }
+
+        // Verify color preference if specified
+        if (
+            entry.colorPreference &&
+            inventory.color.toLowerCase() !== entry.colorPreference.toLowerCase()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: `Inventory color (${inventory.color}) does not match customer's color preference (${entry.colorPreference})`,
+            });
+        }
+
+        // Check if dealer already submitted an offer for this queue entry
+        const existingOffer = await prisma.offer.findUnique({
+            where: {
+                queueEntryId_dealerId: { queueEntryId, dealerId },
+            },
+        });
+
+        if (existingOffer) {
+            return res.status(409).json({
+                success: false,
+                message: "You have already submitted an offer for this queue entry",
+            });
+        }
+
+        // Calculate pricing
+        const ex = new Prisma.Decimal(inventory.exShowroom.toString());
+        const ins = new Prisma.Decimal(insurance.toString());
+        const r = new Prisma.Decimal(rto.toString());
+        const acc = new Prisma.Decimal(accessories.toString());
+        const disc = new Prisma.Decimal((discount ?? 0).toString());
+        const totalPrice = ex.plus(ins).plus(r).plus(acc).minus(disc);
+
+        if (totalPrice.lessThan(0)) {
+            return res.status(400).json({
+                success: false,
+                message: "Calculated total price cannot be negative",
+            });
+        }
+
+        // Verify customer's maxBudget
+        if (entry.maxBudget != null) {
+            const maxBudget = new Prisma.Decimal(entry.maxBudget.toString());
+            if (totalPrice.greaterThan(maxBudget)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Offer total price (${totalPrice.toString()}) exceeds customer's maximum budget (${maxBudget.toString()})`,
+                });
+            }
+        }
+
+        // Expiry calculation
+        let expDate;
+        if (expiresAt) {
+            expDate = new Date(expiresAt);
+            if (isNaN(expDate.getTime()) || expDate <= new Date()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "expiresAt must be a valid future date",
+                });
+            }
+        } else {
+            expDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // default 24 hours
+        }
+
+        // Atomically create offer and update QueueEntry to OFFERED in a transaction
+        const created = await prisma.$transaction(async (tx) => {
+            const newOffer = await tx.offer.create({
+                data: {
+                    queueEntryId,
+                    inventoryId,
+                    dealerId,
+                    exShowroom: ex,
+                    insurance: ins,
+                    rto: r,
+                    accessories: acc,
+                    discount: disc,
+                    totalPrice,
+                    status: "PENDING",
+                    expiresAt: expDate,
+                },
+                include: {
+                    dealer: {
+                        select: {
+                            dealerId: true,
+                            dealerName: true,
+                            city: true,
+                            address: true,
+                        },
+                    },
+                    inventory: {
+                        select: {
+                            inventoryId: true,
+                            variant: true,
+                            color: true,
+                        },
+                    },
+                },
+            });
+
+            await tx.queueEntry.update({
+                where: { entryId: queueEntryId },
+                data: { status: "OFFERED" },
+            });
+
+            return newOffer;
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Offer created successfully",
+            offer: formatOffer(created),
+        });
+    } catch (err) {
+        if (err.code === "P2002") {
+            return res.status(409).json({
+                success: false,
+                message: "You have already submitted an offer for this queue entry",
+            });
+        }
+        console.error("createOffer error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while creating the offer",
+        });
+    }
+};
+
+/**
+ * GET /api/offers/my
+ * Dealer views all offers submitted by their dealership.
+ */
+const getMyOffers = async (req, res) => {
+    try {
+        const dealerId = req.dealer.dealerId;
+
+        const offers = await prisma.offer.findMany({
+            where: { dealerId },
+            include: {
+                inventory: {
+                    select: {
+                        inventoryId: true,
+                        variant: true,
+                        color: true,
+                    },
+                },
+                queueEntry: {
+                    include: {
+                        queue: {
+                            include: {
+                                carModel: true,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        // Process lazy expiration for any expired pending offers
+        const activeOffers = [];
+        for (const offer of offers) {
+            const checked = await checkAndExpireOffer(offer);
+            activeOffers.push(checked);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Dealer offers retrieved successfully",
+            offers: activeOffers.map(formatOffer),
+        });
+    } catch (err) {
+        console.error("getMyOffers error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while retrieving offers",
+        });
+    }
+};
+
 module.exports = {
     getEligibleQueueEntries,
+    createOffer,
+    getMyOffers,
+    checkAndExpireOffer,
+    formatOffer,
+    offerIdSchema,
+    queueIdSchema,
 };
