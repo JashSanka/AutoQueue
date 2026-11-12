@@ -918,6 +918,125 @@ const getOfferById = async (req, res) => {
     }
 };
 
+/**
+ * PATCH /api/offers/:offerId/reject
+ * Customer rejects a PENDING offer.
+ */
+const rejectOffer = async (req, res) => {
+    try {
+        const idResult = offerIdSchema.safeParse(req.params.offerId);
+        if (!idResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid offer ID",
+            });
+        }
+        const offerId = idResult.data;
+        const customerId = req.user.userId;
+
+        const offer = await prisma.offer.findUnique({
+            where: { offerId },
+            include: {
+                queueEntry: true,
+            },
+        });
+
+        if (!offer) {
+            return res.status(404).json({
+                success: false,
+                message: "Offer not found",
+            });
+        }
+
+        // 1. Verify ownership through associated QueueEntry
+        if (offer.queueEntry.customerId !== customerId) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to reject this offer",
+            });
+        }
+
+        // 3. If already expired or expired pending
+        if (offer.status === "EXPIRED") {
+            return res.status(409).json({
+                success: false,
+                message: "Cannot reject an expired offer",
+            });
+        }
+
+        if (offer.status === "PENDING" && new Date(offer.expiresAt) < new Date()) {
+            await checkAndExpireOffer(offer);
+            return res.status(409).json({
+                success: false,
+                message: "Offer has expired and cannot be rejected",
+            });
+        }
+
+        // 2. Only a PENDING offer can be rejected
+        if (offer.status !== "PENDING") {
+            return res.status(409).json({
+                success: false,
+                message: `Only PENDING offers can be rejected. Current status is ${offer.status}`,
+            });
+        }
+
+        // 4. Update status to REJECTED inside transaction and update QueueEntry status
+        const result = await prisma.$transaction(async (tx) => {
+            const rejected = await tx.offer.update({
+                where: { offerId },
+                data: { status: "REJECTED" },
+            });
+
+            // Check if any other valid PENDING offers exist for this queue entry
+            const otherPendingCount = await tx.offer.count({
+                where: {
+                    queueEntryId: offer.queueEntryId,
+                    offerId: { not: offerId },
+                    status: "PENDING",
+                    expiresAt: { gt: new Date() },
+                },
+            });
+
+            let finalEntryStatus = offer.queueEntry.status;
+
+            if (otherPendingCount === 0) {
+                // If QueueEntry is already BOOKED or LEFT, do not reactivate it
+                if (offer.queueEntry.status === "OFFERED") {
+                    const updatedEntry = await tx.queueEntry.update({
+                        where: { entryId: offer.queueEntryId },
+                        data: { status: "WAITING" },
+                    });
+                    finalEntryStatus = updatedEntry.status;
+                }
+            }
+
+            return {
+                offer: rejected,
+                queueEntryStatus: finalEntryStatus,
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Offer rejected successfully",
+            offer: {
+                offerId: result.offer.offerId,
+                status: result.offer.status,
+            },
+            queueEntry: {
+                entryId: offer.queueEntryId,
+                status: result.queueEntryStatus,
+            },
+        });
+    } catch (err) {
+        console.error("rejectOffer error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while rejecting the offer",
+        });
+    }
+};
+
 module.exports = {
     getEligibleQueueEntries,
     createOffer,
@@ -925,6 +1044,7 @@ module.exports = {
     updateOffer,
     getOffersByQueue,
     getOfferById,
+    rejectOffer,
     checkAndExpireOffer,
     formatOffer,
     offerIdSchema,

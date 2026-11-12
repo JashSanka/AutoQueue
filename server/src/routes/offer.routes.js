@@ -8,6 +8,7 @@ const {
     updateOffer,
     getOffersByQueue,
     getOfferById,
+    rejectOffer,
 } = require("../controllers/offer.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -61,6 +62,13 @@ router.get(
     authenticate,
     authorize("CUSTOMER"),
     getOfferById
+);
+
+router.patch(
+    "/:offerId/reject",
+    authenticate,
+    authorize("CUSTOMER"),
+    rejectOffer
 );
 
 module.exports = router;
