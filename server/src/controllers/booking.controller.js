@@ -391,8 +391,189 @@ const acceptOffer = async (req, res) => {
     }
 };
 
+/**
+ * GET /api/bookings/my
+ * Customer views their own booking history.
+ */
+const getMyBookings = async (req, res) => {
+    try {
+        const customerId = req.user.userId;
+
+        const bookings = await prisma.booking.findMany({
+            where: { customerId },
+            include: {
+                dealer: {
+                    select: {
+                        dealerId: true,
+                        dealerName: true,
+                        city: true,
+                        address: true,
+                    },
+                },
+                inventory: {
+                    include: {
+                        carModel: true,
+                    },
+                },
+                offer: true,
+                queueEntry: true,
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Customer bookings retrieved successfully",
+            bookings: bookings.map(formatBooking),
+        });
+    } catch (err) {
+        console.error("getMyBookings error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while retrieving bookings",
+        });
+    }
+};
+
+/**
+ * GET /api/bookings/dealer/my
+ * Verified Dealer views bookings associated with their dealership.
+ */
+const getDealerBookings = async (req, res) => {
+    try {
+        const dealerId = req.dealer.dealerId;
+
+        const bookings = await prisma.booking.findMany({
+            where: { dealerId },
+            include: {
+                customer: {
+                    select: {
+                        userId: true,
+                        name: true,
+                        email: true,
+                        phone: true,
+                    },
+                },
+                inventory: {
+                    include: {
+                        carModel: true,
+                    },
+                },
+                offer: true,
+                queueEntry: true,
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Dealer bookings retrieved successfully",
+            bookings: bookings.map(formatBooking),
+        });
+    } catch (err) {
+        console.error("getDealerBookings error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while retrieving dealer bookings",
+        });
+    }
+};
+
+/**
+ * GET /api/bookings/:bookingId
+ * Customer or Dealer views an individual booking (with ownership verification).
+ */
+const getBookingById = async (req, res) => {
+    try {
+        const idResult = bookingIdSchema.safeParse(req.params.bookingId);
+        if (!idResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid booking ID",
+            });
+        }
+        const bookingId = idResult.data;
+
+        const booking = await prisma.booking.findUnique({
+            where: { bookingId },
+            include: {
+                customer: {
+                    select: {
+                        userId: true,
+                        name: true,
+                        email: true,
+                        phone: true,
+                    },
+                },
+                dealer: {
+                    select: {
+                        dealerId: true,
+                        dealerName: true,
+                        city: true,
+                        address: true,
+                    },
+                },
+                inventory: {
+                    include: {
+                        carModel: true,
+                    },
+                },
+                offer: true,
+                queueEntry: true,
+            },
+        });
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking not found",
+            });
+        }
+
+        // Ownership verification
+        if (req.user.role === "CUSTOMER") {
+            if (booking.customerId !== req.user.userId) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You do not have permission to access this booking",
+                });
+            }
+        } else if (req.user.role === "DEALER") {
+            const dealer = await prisma.dealer.findUnique({
+                where: { userId: req.user.userId },
+            });
+            if (!dealer || dealer.dealerId !== booking.dealerId) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You do not have permission to access this booking",
+                });
+            }
+        } else {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to access this resource",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Booking retrieved successfully",
+            booking: formatBooking(booking),
+        });
+    } catch (err) {
+        console.error("getBookingById error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while retrieving the booking",
+        });
+    }
+};
+
 module.exports = {
     acceptOffer,
+    getMyBookings,
+    getDealerBookings,
+    getBookingById,
     offerIdSchema,
     bookingIdSchema,
     formatBooking,
