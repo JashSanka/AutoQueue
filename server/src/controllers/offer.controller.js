@@ -689,8 +689,12 @@ const updateOffer = async (req, res) => {
             }
         }
 
-        const updated = await prisma.offer.update({
-            where: { offerId },
+        const updateResult = await prisma.offer.updateMany({
+            where: {
+                offerId,
+                status: "PENDING",
+                expiresAt: { gt: new Date() },
+            },
             data: {
                 ...(insurance !== undefined && { insurance: ins }),
                 ...(rto !== undefined && { rto: r }),
@@ -698,6 +702,17 @@ const updateOffer = async (req, res) => {
                 ...(discount !== undefined && { discount: disc }),
                 totalPrice: newTotalPrice,
             },
+        });
+
+        if (updateResult.count === 0) {
+            return res.status(409).json({
+                success: false,
+                message: "Cannot update offer: it is no longer PENDING or has expired",
+            });
+        }
+
+        const updated = await prisma.offer.findUnique({
+            where: { offerId },
             include: {
                 inventory: {
                     select: {
