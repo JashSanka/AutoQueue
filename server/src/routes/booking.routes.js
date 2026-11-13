@@ -6,6 +6,7 @@ const {
     getMyBookings,
     getDealerBookings,
     getBookingById,
+    cancelBooking,
 } = require("../controllers/booking.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -19,5 +20,6 @@ router.get("/dealer/my", authenticate, authorize("DEALER"), dealerVerified, getD
 
 // ─── Parameterized Routes ────────────────────────────────────────────────────
 router.get("/:bookingId", authenticate, authorize("CUSTOMER", "DEALER"), getBookingById);
+router.patch("/:bookingId/cancel", authenticate, authorize("CUSTOMER", "DEALER"), cancelBooking);
 
 module.exports = router;

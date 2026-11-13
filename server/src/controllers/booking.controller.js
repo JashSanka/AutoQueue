@@ -569,11 +569,183 @@ const getBookingById = async (req, res) => {
     }
 };
 
+/**
+ * PATCH /api/bookings/:bookingId/cancel
+ * Customer or Dealer cancels a CONFIRMED booking, restoring inventory and recording audit log.
+ */
+const cancelBooking = async (req, res) => {
+    try {
+        const idResult = bookingIdSchema.safeParse(req.params.bookingId);
+        if (!idResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid booking ID",
+            });
+        }
+        const bookingId = idResult.data;
+
+        const booking = await prisma.booking.findUnique({
+            where: { bookingId },
+            include: {
+                dealer: true,
+                inventory: true,
+            },
+        });
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking not found",
+            });
+        }
+
+        // Ownership verification
+        if (req.user.role === "CUSTOMER") {
+            if (booking.customerId !== req.user.userId) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You do not have permission to cancel this booking",
+                });
+            }
+        } else if (req.user.role === "DEALER") {
+            const dealer = await prisma.dealer.findUnique({
+                where: { userId: req.user.userId },
+            });
+            if (!dealer || dealer.dealerId !== booking.dealerId) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You do not have permission to cancel this booking",
+                });
+            }
+            if (!dealer.verified) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Your dealership is awaiting admin verification",
+                });
+            }
+        } else {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to cancel this booking",
+            });
+        }
+
+        // Status check
+        if (booking.status === "CANCELLED") {
+            return res.status(409).json({
+                success: false,
+                message: "Booking has already been cancelled",
+            });
+        }
+
+        if (booking.status !== "CONFIRMED") {
+            return res.status(409).json({
+                success: false,
+                message: `Only confirmed bookings can be cancelled. Current status is ${booking.status}`,
+            });
+        }
+
+        // Execute atomic cancellation transaction
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Conditionally update Booking status from CONFIRMED to CANCELLED
+            const updatedBooking = await tx.booking.updateMany({
+                where: {
+                    bookingId,
+                    status: "CONFIRMED",
+                },
+                data: {
+                    status: "CANCELLED",
+                },
+            });
+
+            if (updatedBooking.count === 0) {
+                const err = new Error("BOOKING_ALREADY_CANCELLED");
+                err.code = "BOOKING_ALREADY_CANCELLED";
+                throw err;
+            }
+
+            // 2. Restore inventory exactly once
+            await tx.inventory.update({
+                where: { inventoryId: booking.inventoryId },
+                data: {
+                    availableUnits: { increment: 1 },
+                },
+            });
+
+            // 3. Record AuditLog
+            await tx.auditLog.create({
+                data: {
+                    actorId: req.user.userId,
+                    action: "CANCEL_BOOKING",
+                    entity: "Booking",
+                    entityId: bookingId,
+                    metadata: {
+                        cancelledByRole: req.user.role,
+                        cancelledByUserId: req.user.userId,
+                        previousStatus: "CONFIRMED",
+                        newStatus: "CANCELLED",
+                        restoredInventoryId: booking.inventoryId,
+                    },
+                },
+            });
+
+            // Return updated booking
+            return tx.booking.findUnique({
+                where: { bookingId },
+                include: {
+                    customer: {
+                        select: {
+                            userId: true,
+                            name: true,
+                            email: true,
+                            phone: true,
+                        },
+                    },
+                    dealer: {
+                        select: {
+                            dealerId: true,
+                            dealerName: true,
+                            city: true,
+                            address: true,
+                        },
+                    },
+                    inventory: {
+                        include: {
+                            carModel: true,
+                        },
+                    },
+                    offer: true,
+                    queueEntry: true,
+                },
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Booking cancelled successfully",
+            booking: formatBooking(result),
+        });
+    } catch (err) {
+        if (err.code === "BOOKING_ALREADY_CANCELLED" || err.message === "BOOKING_ALREADY_CANCELLED") {
+            return res.status(409).json({
+                success: false,
+                message: "Booking has already been cancelled",
+            });
+        }
+        console.error("cancelBooking error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred while cancelling the booking",
+        });
+    }
+};
+
 module.exports = {
     acceptOffer,
     getMyBookings,
     getDealerBookings,
     getBookingById,
+    cancelBooking,
     offerIdSchema,
     bookingIdSchema,
     formatBooking,
