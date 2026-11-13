@@ -490,6 +490,12 @@ const acceptOffer = async (req, res) => {
                 message: "A booking conflict occurred. This offer or queue entry has already been booked",
             });
         }
+        if (err.code === "P2034") {
+            return res.status(409).json({
+                success: false,
+                message: "A concurrency conflict occurred. Please retry your request",
+            });
+        }
         if (err.code === "P2025") {
             return res.status(404).json({
                 success: false,
@@ -764,6 +770,12 @@ const cancelBooking = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 message: "Booking has already been cancelled",
+            });
+        }
+        if (err.code === "P2034") {
+            return res.status(409).json({
+                success: false,
+                message: "A concurrency conflict occurred. Please retry your request",
             });
         }
         if (err.code === "P2025") {
