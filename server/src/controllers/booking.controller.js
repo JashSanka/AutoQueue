@@ -373,44 +373,19 @@ const acceptOffer = async (req, res) => {
 
             // 7f. Create or Update Booking record
             // If the customer previously had a cancelled booking on this entry and rejoined, update that booking
-            const existingBooking = await tx.booking.findUnique({
-                where: { queueEntryId: offer.queueEntryId },
-            });
-
-            let createdBooking;
-            if (existingBooking) {
-                if (existingBooking.status === "CONFIRMED") {
-                    const err = new Error("This queue entry has already been booked");
-                    err.code = "QUEUE_ENTRY_ALREADY_BOOKED";
-                    throw err;
-                }
-                createdBooking = await tx.booking.update({
-                    where: { bookingId: existingBooking.bookingId },
-                    data: {
-                        offerId,
-                        dealerId: offer.dealerId,
-                        inventoryId: offer.inventoryId,
-                        priceSnapshot,
-                        totalPrice: offer.totalPrice,
-                        status: "CONFIRMED",
-                    },
-                    include: bookingInclude,
-                });
-            } else {
-                createdBooking = await tx.booking.create({
-                    data: {
-                        offerId,
-                        queueEntryId: offer.queueEntryId,
-                        customerId,
-                        dealerId: offer.dealerId,
-                        inventoryId: offer.inventoryId,
-                        priceSnapshot,
-                        totalPrice: offer.totalPrice,
-                        status: "CONFIRMED",
-                    },
-                    include: bookingInclude,
-                });
-            }
+            const createdBooking = await tx.booking.create({
+    data: {
+        offerId,
+        queueEntryId: offer.queueEntryId,
+        customerId,
+        dealerId: offer.dealerId,
+        inventoryId: offer.inventoryId,
+        priceSnapshot,
+        totalPrice: offer.totalPrice,
+        status: "CONFIRMED",
+    },
+    include: bookingInclude,
+});
 
             // 7g. Record AuditLog entry
             await tx.auditLog.create({
