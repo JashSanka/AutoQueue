@@ -6,7 +6,8 @@ const {
     getAllCars,
     getCarById,
     updateCar,
-    deleteCar
+    deleteCar,
+    uploadCarImage
 } = require("../controllers/car.controller");
 
 const authenticate = require("../middleware/authenticate");
@@ -19,6 +20,8 @@ router.get("/:carModelId", authenticate, getCarById);
 // ADMIN only
 router.post("/", authenticate, authorize("ADMIN"), createCar);
 router.patch("/:carModelId", authenticate, authorize("ADMIN"), updateCar);
+router.post("/:carModelId/image", authenticate, authorize("ADMIN"), uploadCarImage);
+router.patch("/:carModelId/image", authenticate, authorize("ADMIN"), uploadCarImage);
 router.delete("/:carModelId", authenticate, authorize("ADMIN"), deleteCar);
 
 module.exports = router;

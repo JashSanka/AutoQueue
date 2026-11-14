@@ -22,7 +22,6 @@ export const dealerApi = {
   createInventory: (token, values) => api("/inventory", { token, method: "POST", body: values }),
   updateInventory: (token, id, values) => api(`/inventory/${id}`, { token, method: "PATCH", body: values }),
   updateInventoryStatus: (token, id, values) => api(`/inventory/${id}/status`, { token, method: "PATCH", body: values }),
-  uploadInventoryImage: (token, id, imageDataUrl) => api(`/inventory/${id}/image`, { token, method: "PATCH", body: { imageDataUrl } }),
   createOffer: (token, values) => api("/offers", { token, method: "POST", body: values }),
   updateOffer: (token, id, values) => api(`/offers/${id}`, { token, method: "PATCH", body: values }),
 };
@@ -33,5 +32,6 @@ export const adminApi = {
   cars: (token) => api("/cars", { token }),
   createCar: (token, values) => api("/cars", { token, method: "POST", body: values }),
   updateCar: (token, id, values) => api(`/cars/${id}`, { token, method: "PATCH", body: values }),
+  uploadCarImage: (token, id, imageDataUrl) => api(`/cars/${id}/image`, { token, method: "POST", body: { imageDataUrl } }),
   deleteCar: (token, id) => api(`/cars/${id}`, { token, method: "DELETE" }),
 };

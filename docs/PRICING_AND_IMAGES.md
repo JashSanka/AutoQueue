@@ -8,7 +8,9 @@ The frontend uses the same visible formula only as a live preview while the deal
 
 ## Images
 
-The schema provides `CarModel.imageUrl` only. Administrators can create or replace a model image URL in the catalogue workspace, and verified dealers can upload a PNG, JPEG, or WebP image (up to 4 MB) while adding inventory. The upload is saved under `server/uploads` and updates the existing model image URL, so it is a shared model image rather than a dealer- or inventory-specific image. It is shown wherever that model appears—catalogue, inventory cards, and dealer previews. Keep the uploads directory on persistent storage when deploying.
+The schema provides `CarModel.imageUrl` only. Administrators manage official catalogue images: they can specify an image URL, upload a PNG/JPEG/WebP image (up to 4 MB saved under `server/uploads`), preview imagery, replace imagery, or remove it (setting `imageUrl` to null).
+
+Dealers cannot modify or overwrite `CarModel.imageUrl`. In accordance with the schema, inventory records do not store separate image fields and represent dealer-specific variant, color, stock, and pricing. Dealers and customers view official catalogue images with graceful fallback to `/images/vehicle-fallback.png` when an image is absent or fails to load. Image URLs persist across restarts because they are stored in `CarModel.imageUrl`. Keep the uploads directory on persistent storage when deploying.
 
 `/images/vehicle-fallback.png` is a generated, neutral, non-model-specific fallback used only when `imageUrl` is absent or cannot load. It is not persisted as a vehicle model image and is intentionally not presented as a particular make or model. Image URLs persist across restarts because they are stored in `CarModel.imageUrl`; the fallback asset is packaged with the frontend.
 

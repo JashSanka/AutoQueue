@@ -20,6 +20,7 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 |GET|`/api/cars`|List catalogue|JWT / all|—|200|
 |GET|`/api/cars/:carModelId`|Get car model|JWT / all|UUID path param|200;400,404|
 |PATCH|`/api/cars/:carModelId`|Update car model|JWT / ADMIN|UUID; mutable catalogue fields|200;400,404,409|
+|POST/PATCH|`/api/cars/:carModelId/image`|Upload vehicle catalogue image|JWT / ADMIN|UUID; `imageDataUrl` (PNG, JPEG, WebP up to 4MB)|200;400,404,413|
 |DELETE|`/api/cars/:carModelId`|Delete unreferenced car model|JWT / ADMIN|UUID|200;400,404,409|
 |PATCH|`/api/admin/dealers/:dealerId/verify`|Verify dealership|JWT / ADMIN|dealer UUID|200;400,404,409|
 |GET|`/api/admin/dealers`|List dealer profiles and verification status|JWT / ADMIN|—|200;401,403|
@@ -34,7 +35,6 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 |GET|`/api/inventory/:inventoryId`|Dealer-owned inventory item|JWT / verified DEALER|UUID|200;400,403,404|
 |PATCH|`/api/inventory/:inventoryId`|Update dealer-owned inventory|JWT / verified DEALER|UUID; allowed inventory fields|200;400,403,404,409|
 |PATCH|`/api/inventory/:inventoryId/status`|Toggle owned inventory active state|JWT / verified DEALER|UUID; `active`|200;400,403,404|
-|PATCH|`/api/inventory/:inventoryId/image`|Upload a model image from dealer inventory|JWT / verified DEALER|UUID; `imageDataUrl` for PNG, JPEG, or WebP, up to 4 MB|200;400,403,404,413|
 
 ## Queues
 

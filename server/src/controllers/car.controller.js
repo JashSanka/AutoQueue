@@ -1,5 +1,16 @@
 const prisma = require("../config/prisma");
 const { z } = require("zod");
+const fs = require("fs/promises");
+const path = require("path");
+const { randomUUID } = require("crypto");
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function hasExpectedImageSignature(type, bytes) {
+    if (type === "png") return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (type === "jpeg") return bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+    return bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+}
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -7,20 +18,41 @@ const carModelIdSchema = z.uuid({
     message: "Invalid car model ID"
 });
 
+const imageUrlSchema = z
+    .string()
+    .trim()
+    .refine(
+        (val) => {
+            if (!val) return true;
+            if (val.startsWith("/uploads/") || val.startsWith("/images/")) return true;
+            try {
+                const u = new URL(val);
+                return u.protocol === "http:" || u.protocol === "https:";
+            } catch {
+                return false;
+            }
+        },
+        { message: "imageUrl must be a valid URL or /uploads/ path" }
+    )
+    .transform((val) => (val === "" ? null : val))
+    .nullable()
+    .optional();
+
+const imageUploadSchema = z.object({
+    imageDataUrl: z.string().min(1, "An image file is required"),
+});
+
 const createCarSchema = z.object({
     brand: z.string().trim().min(1, "Brand is required"),
     model: z.string().trim().min(1, "Model is required"),
-    imageUrl: z.url({ message: "imageUrl must be a valid URL" }).nullable().optional()
+    imageUrl: imageUrlSchema
 });
 
 const updateCarSchema = z
     .object({
         brand: z.string().trim().min(1, "Brand must not be empty").optional(),
         model: z.string().trim().min(1, "Model must not be empty").optional(),
-        imageUrl: z
-            .url("imageUrl must be a valid URL")
-            .nullable()
-            .optional()
+        imageUrl: imageUrlSchema
     })
     .refine(
         (data) => Object.keys(data).length > 0,
@@ -309,4 +341,81 @@ const deleteCar = async (req, res) => {
     }
 };
 
-module.exports = { createCar, getAllCars, getCarById, updateCar, deleteCar };
+/**
+ * POST or PATCH /api/cars/:carModelId/image
+ * ADMIN only – upload an image file (PNG, JPEG, WebP up to 4MB) for a car catalogue entry.
+ */
+const uploadCarImage = async (req, res) => {
+    try {
+        const idResult = carModelIdSchema.safeParse(req.params.carModelId);
+        const bodyResult = imageUploadSchema.safeParse(req.body);
+
+        if (!idResult.success || !bodyResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: "A valid car model ID and imageDataUrl are required"
+            });
+        }
+
+        const carModelId = idResult.data;
+        const existing = await prisma.carModel.findUnique({
+            where: { carModelId }
+        });
+
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: "Car not found"
+            });
+        }
+
+        const match = bodyResult.data.imageDataUrl.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+        if (!match) {
+            return res.status(400).json({
+                success: false,
+                message: "Upload a valid PNG, JPEG, or WebP image"
+            });
+        }
+
+        const bytes = Buffer.from(match[2], "base64");
+        if (bytes.length === 0 || bytes.length > 4 * 1024 * 1024) {
+            return res.status(413).json({
+                success: false,
+                message: "Image must be between 1 byte and 4 MB"
+            });
+        }
+
+        if (!hasExpectedImageSignature(match[1], bytes)) {
+            return res.status(400).json({
+                success: false,
+                message: "The uploaded file does not match its image type signature"
+            });
+        }
+
+        const extension = match[1] === "jpeg" ? "jpg" : match[1];
+        const uploadsDir = path.join(__dirname, "../../uploads");
+        await fs.mkdir(uploadsDir, { recursive: true });
+        const filename = `${carModelId}-${randomUUID()}.${extension}`;
+        await fs.writeFile(path.join(uploadsDir, filename), bytes);
+        const imageUrl = `/uploads/${filename}`;
+
+        const updated = await prisma.carModel.update({
+            where: { carModelId },
+            data: { imageUrl }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Vehicle catalogue image updated successfully",
+            car: safeCarFields(updated)
+        });
+    } catch (error) {
+        console.error("Upload car image error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to save vehicle catalogue image"
+        });
+    }
+};
+
+module.exports = { createCar, getAllCars, getCarById, updateCar, deleteCar, uploadCarImage };
