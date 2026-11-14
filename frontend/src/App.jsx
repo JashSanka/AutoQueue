@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import AuthPortal from './pages/AuthPortal';
+import PortalAuth from './pages/PortalAuth';
+import PortalHome from './pages/PortalHome';
 import CustomerDashboard from './pages/CustomerDashboard';
 import DealerDashboard from './pages/DealerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -12,9 +13,12 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<AuthPortal initialMode="login" />} />
-          <Route path="/login" element={<AuthPortal initialMode="login" />} />
-          <Route path="/register" element={<AuthPortal initialMode="register" />} />
+          <Route path="/" element={<PortalHome />} />
+          <Route path="/customer/login" element={<PortalAuth role="CUSTOMER" />} />
+          <Route path="/customer/register" element={<PortalAuth role="CUSTOMER" register />} />
+          <Route path="/dealer/login" element={<PortalAuth role="DEALER" />} />
+          <Route path="/dealer/register" element={<PortalAuth role="DEALER" register />} />
+          <Route path="/admin/login" element={<PortalAuth role="ADMIN" />} />
           <Route
             path="/customer"
             element={
@@ -36,7 +40,7 @@ function App() {
 function RoleHome() {
   const { user, isLoading } = useAuth();
   if (isLoading) return null;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/" replace />;
   return <Navigate to={`/${user.role.toLowerCase()}`} replace />;
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { loginUser, registerCustomer as apiRegister, getProfile } from '../api/auth';
+import { loginUser, registerUser as apiRegister, getProfile } from '../api/auth';
 import { AuthContext } from './useAuth';
 
 const TOKEN_KEY = 'autoqueue_jwt_token';
@@ -51,13 +51,16 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, expectedRole) => {
     setAuthError(null);
     try {
       const response = await loginUser({ email, password });
       
       if (!response?.token || !response?.user) {
         throw new Error('Malformed authentication response from server.');
+      }
+      if (expectedRole && response.user.role !== expectedRole) {
+        throw new Error(`This account belongs to the ${response.user.role.toLowerCase()} portal.`);
       }
 
       localStorage.setItem(TOKEN_KEY, response.token);
