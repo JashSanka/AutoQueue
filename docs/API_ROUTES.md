@@ -27,7 +27,7 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 
 |Method|Endpoint|Purpose|Auth / roles|Parameters|Success / notable errors|
 |---|---|---|---|---|---|
-|GET|`/api/inventory`|Browse inventory|JWT / all|supported query filters|200|
+|GET|`/api/inventory`|Browse active stock from verified dealers|JWT / all|optional `carModelId`, `city`, `variant`, `color` query filters|200;400|
 |POST|`/api/inventory`|Add dealership inventory|JWT / verified DEALER|pricing, model, variant, color, unit fields|201;400,403,409|
 |GET|`/api/inventory/my`|Dealer inventory|JWT / verified DEALER|—|200|
 |GET|`/api/inventory/:inventoryId`|Dealer-owned inventory item|JWT / verified DEALER|UUID|200;400,403,404|
