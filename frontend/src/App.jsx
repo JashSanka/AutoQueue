@@ -3,8 +3,8 @@ import { AuthProvider } from './context/AuthContext';
 import PortalAuth from './pages/PortalAuth';
 import PortalHome from './pages/PortalHome';
 import CustomerDashboard from './pages/CustomerDashboard';
-import DealerDashboard from './pages/DealerDashboard';
-import AdminDashboard from './pages/AdminDashboard';
+import DealerWorkspace from './pages/DealerWorkspace';
+import AdminWorkspace from './pages/AdminWorkspace';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { useAuth } from './context/useAuth';
 
@@ -27,8 +27,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/dealer" element={<ProtectedRoute roles={["DEALER"]}><DealerDashboard /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute roles={["ADMIN"]}><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/dealer" element={<ProtectedRoute roles={["DEALER"]}><DealerWorkspace /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute roles={["ADMIN"]}><AdminWorkspace /></ProtectedRoute>} />
           <Route path="/dashboard" element={<RoleHome />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

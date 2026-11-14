@@ -6,6 +6,7 @@ export default function CustomerDashboard() {
   const { user, token, logout } = useAuth();
   const [data, setData] = useState({ cars: [], inventory: [], queues: [], bookings: [], offers: [] });
   const [message, setMessage] = useState('Loading your workspace…');
+  const [search, setSearch] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -18,6 +19,7 @@ export default function CustomerDashboard() {
   }, [token]);
   useEffect(() => { const timer = window.setTimeout(refresh, 0); return () => window.clearTimeout(timer); }, [refresh]);
   const action = async (request) => { try { await request(); await refresh(); } catch (error) { setMessage(error.message); } };
+  const visibleInventory = data.inventory.filter((item) => `${item.carModel?.brand} ${item.carModel?.model} ${item.variant} ${item.color} ${item.dealer?.city}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-neutral-200 flex flex-col font-sans">
@@ -168,8 +170,15 @@ export default function CustomerDashboard() {
           </div>
         </div>
 
+        <section className="border border-[#262626] bg-[#111111] p-6 rounded-[2px]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="font-mono text-xs uppercase tracking-wider text-neutral-400">Discover cars and available dealer inventory</h2><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search model, variant, colour, city" className="border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm" /></div>
+          <div className="grid gap-3 md:grid-cols-2">{visibleInventory.map((item) => <article key={item.inventoryId} className="border border-neutral-800 p-4"><p className="font-semibold">{item.carModel?.brand} {item.carModel?.model}</p><p className="mt-1 text-sm text-neutral-400">{item.variant} · {item.color} · {item.dealer?.dealerName}, {item.dealer?.city}</p><p className="mt-2 text-sm">₹{item.estimatedTotalPrice} · {item.availableUnits} unit(s) available</p><button className="mt-3 text-sm text-orange-400" onClick={() => action(() => customerApi.joinQueue(token, { carModelId: item.carModelId, variant: item.variant, city: item.dealer.city, colorPreference: item.color }))}>Join this queue</button></article>)}</div>
+          {!visibleInventory.length && <p className="text-sm text-neutral-500">No available dealer inventory matches your search. Catalogue models may exist without available stock.</p>}
+        </section>
+
         <section className="border border-[#262626] bg-[#111111] p-6 rounded-[2px]"><h2 className="mb-4 font-mono text-xs uppercase tracking-wider text-neutral-400">Pending offers</h2>{data.offers.filter((offer) => offer.status === 'PENDING').map((offer) => <div key={offer.offerId} className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-3 text-sm"><span>{offer.dealer?.dealerName || 'Dealer'} · ₹{offer.totalPrice}</span><span className="flex gap-2"><button className="text-emerald-400" onClick={() => action(() => customerApi.acceptOffer(token, offer.offerId))}>Accept</button><button className="text-red-400" onClick={() => action(() => customerApi.rejectOffer(token, offer.offerId))}>Reject</button></span></div>)}{!data.offers.some((offer) => offer.status === 'PENDING') && <p className="text-sm text-neutral-500">No pending offers.</p>}</section>
         <section className="border border-[#262626] bg-[#111111] p-6 rounded-[2px]"><h2 className="mb-4 font-mono text-xs uppercase tracking-wider text-neutral-400">Your queues</h2>{data.queues.map((queue) => <div key={queue.entryId} className="mb-3 flex items-center justify-between border-b border-neutral-800 pb-3 text-sm"><span>{queue.brand} {queue.model} · {queue.variant} · {queue.status}{queue.position ? ` · #${queue.position}` : ''}</span>{['WAITING','OFFERED'].includes(queue.status) && <button className="text-red-400" onClick={() => action(() => customerApi.leaveQueue(token, queue.queueId))}>Leave</button>}</div>)}{!data.queues.length && <p className="text-sm text-neutral-500">No queues joined.</p>}</section>
+        <section className="border border-[#262626] bg-[#111111] p-6 rounded-[2px]"><h2 className="mb-4 font-mono text-xs uppercase tracking-wider text-neutral-400">Booking history</h2>{data.bookings.map((booking) => <div key={booking.bookingId} className="mb-3 flex items-center justify-between border-b border-neutral-800 pb-3 text-sm"><span>{booking.inventory?.carModel?.brand} {booking.inventory?.carModel?.model} · ₹{booking.totalPrice} · {booking.status}</span>{booking.status === 'CONFIRMED' && <button className="text-red-400" onClick={() => action(() => customerApi.cancelBooking(token, booking.bookingId))}>Cancel booking</button>}</div>)}{!data.bookings.length && <p className="text-sm text-neutral-500">No booking history.</p>}</section>
       </main>
     </div>
   );

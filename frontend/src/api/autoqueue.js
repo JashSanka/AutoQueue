@@ -14,6 +14,7 @@ export const customerApi = {
 };
 
 export const dealerApi = {
+  cars: (token) => api("/cars", { token }),
   inventory: (token) => api("/inventory/my", { token }),
   offers: (token) => api("/offers/my", { token }),
   eligibleEntries: (token) => api("/offers/eligible-entries", { token }),
@@ -23,4 +24,13 @@ export const dealerApi = {
   updateInventoryStatus: (token, id, values) => api(`/inventory/${id}/status`, { token, method: "PATCH", body: values }),
   createOffer: (token, values) => api("/offers", { token, method: "POST", body: values }),
   updateOffer: (token, id, values) => api(`/offers/${id}`, { token, method: "PATCH", body: values }),
+};
+
+export const adminApi = {
+  dealers: (token) => api("/admin/dealers", { token }),
+  verifyDealer: (token, dealerId) => api(`/admin/dealers/${dealerId}/verify`, { token, method: "PATCH" }),
+  cars: (token) => api("/cars", { token }),
+  createCar: (token, values) => api("/cars", { token, method: "POST", body: values }),
+  updateCar: (token, id, values) => api(`/cars/${id}`, { token, method: "PATCH", body: values }),
+  deleteCar: (token, id) => api(`/cars/${id}`, { token, method: "DELETE" }),
 };
