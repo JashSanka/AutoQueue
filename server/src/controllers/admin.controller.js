@@ -3,6 +3,24 @@ const { z } = require("zod");
 
 const dealerIdSchema = z.string().uuid();
 
+const listDealers = async (req, res) => {
+    try {
+        const dealers = await prisma.dealer.findMany({
+            select: {
+                dealerId: true, dealerName: true, city: true, address: true,
+                verified: true, createdAt: true,
+                user: { select: { name: true, email: true, phone: true, isActive: true } },
+                _count: { select: { inventory: true, bookings: true } },
+            },
+            orderBy: [{ verified: "asc" }, { createdAt: "asc" }],
+        });
+        return res.status(200).json({ success: true, dealers });
+    } catch (error) {
+        console.error("List dealers error:", error);
+        return res.status(500).json({ success: false, message: "Unable to retrieve dealers" });
+    }
+};
+
 const verifyDealer = async (req, res) => {
     try {
         const validation = dealerIdSchema.safeParse(req.params.dealerId);
@@ -77,4 +95,4 @@ const verifyDealer = async (req, res) => {
     }
 };
 
-module.exports = { verifyDealer };
+module.exports = { verifyDealer, listDealers };
