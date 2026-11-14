@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist_electron
 *.local
 
 # Editor directories and files
@@ -22,3 +23,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment secrets (do NOT ignore .env.production — Vite needs it for builds)
+.env
+
+# Generated icon binary — rebuild from favicon.svg using iconutil
+build/icon.icns

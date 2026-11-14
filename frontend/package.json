@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
-    "electron:package": "npm run build && electron-builder --mac dmg"
+    "electron:dir": "npm run build && electron-builder --mac --dir --arm64",
+    "electron:package": "npm run build && electron-builder --mac dmg --arm64",
+    "electron:zip": "npm run build && electron-builder --mac zip --arm64"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.5",
@@ -37,15 +39,34 @@
   "build": {
     "appId": "com.autoqueue.desktop",
     "productName": "AutoQueue",
+    "artifactName": "AutoQueue-${arch}.${ext}",
+    "directories": {
+      "output": "dist_electron"
+    },
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "!**/.env",
+      "!**/.env.*",
+      "!**/*.dump",
+      "!**/*.sql"
     ],
     "mac": {
       "target": [
-        "dmg"
-      ]
+        { "target": "dmg", "arch": ["arm64"] }
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "title": "AutoQueue",
+      "filesystem": "APFS",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 540, "height": 380 }
     }
   }
 }
