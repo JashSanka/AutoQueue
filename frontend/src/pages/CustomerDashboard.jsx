@@ -21,7 +21,9 @@ export default function CustomerDashboard() {
 
   // Join Queue Modal State
   const [joinModal, setJoinModal] = useState(null); // { carModelId, brand, model, variant, city, color } | null
-  const [colorPreference, setColorPreference] = useState("");
+  const [modalVariant, setModalVariant] = useState("");
+  const [modalCity, setModalCity] = useState("Delhi");
+  const [modalColor, setModalColor] = useState("");
 
   const notify = (msg, type = "info") => {
     setMessage(msg);
@@ -75,16 +77,30 @@ export default function CustomerDashboard() {
     }
   };
 
-  const openJoinModal = (item) => {
+  const openJoinModalFromInventory = (item) => {
     setJoinModal({
       carModelId: item.carModelId,
       brand: item.carModel?.brand || "Vehicle",
       model: item.carModel?.model || "Model",
-      variant: item.variant,
-      city: item.dealer?.city || "Delhi",
-      color: item.color,
+      imageUrl: item.carModel?.imageUrl,
     });
-    setColorPreference(item.color || "");
+    setModalVariant(item.variant || "");
+    setModalCity(item.dealer?.city || "Delhi");
+    setModalColor(item.color || "");
+  };
+
+  const openJoinModalFromCar = (car) => {
+    // Check if any inventory exists to pre-suggest city/variant
+    const existingStock = data.inventory.find((i) => i.carModelId === car.carModelId);
+    setJoinModal({
+      carModelId: car.carModelId,
+      brand: car.brand,
+      model: car.model,
+      imageUrl: car.imageUrl,
+    });
+    setModalVariant(existingStock?.variant || "Standard");
+    setModalCity(existingStock?.dealer?.city || "Delhi");
+    setModalColor(existingStock?.color || "");
   };
 
   const handleJoinQueueSubmit = (e) => {
@@ -95,14 +111,18 @@ export default function CustomerDashboard() {
       () =>
         customerApi.joinQueue(token, {
           carModelId: joinModal.carModelId,
-          variant: joinModal.variant,
-          city: joinModal.city,
-          colorPreference: colorPreference.trim() || undefined,
+          variant: modalVariant.trim(),
+          city: modalCity.trim(),
+          colorPreference: modalColor.trim() || undefined,
         }),
       `Joined waiting queue for ${joinModal.brand} ${joinModal.model}`
     );
     setJoinModal(null);
   };
+
+  const visibleCars = data.cars.filter((car) =>
+    `${car.brand} ${car.model}`.toLowerCase().includes(search.toLowerCase())
+  );
 
   const visibleInventory = data.inventory.filter((item) =>
     `${item.carModel?.brand} ${item.carModel?.model} ${item.variant} ${item.color} ${item.dealer?.city}`
@@ -152,6 +172,10 @@ export default function CustomerDashboard() {
         {/* Metric Cards */}
         <div className="metric-grid">
           <div className="metric">
+            <span>Catalogue Models</span>
+            <strong>{data.cars.length}</strong>
+          </div>
+          <div className="metric">
             <span>Active Queues</span>
             <strong>{activeQueues.length}</strong>
           </div>
@@ -164,10 +188,6 @@ export default function CustomerDashboard() {
           <div className="metric">
             <span>Confirmed Bookings</span>
             <strong className="text-emerald-700">{confirmedBookings.length}</strong>
-          </div>
-          <div className="metric">
-            <span>Available Regional Stock</span>
-            <strong>{data.inventory.length}</strong>
           </div>
         </div>
 
@@ -183,139 +203,166 @@ export default function CustomerDashboard() {
             </p>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              {pendingOffers.map((offer) => (
-                <div key={offer.offerId} className="p-4 rounded-xl border border-amber-200 bg-white shadow-sm flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <strong className="text-base text-slate-900 font-bold">
-                          {offer.dealer?.dealerName || "Regional Dealership"}
-                        </strong>
-                        <p className="text-xs text-slate-500">
-                          City: {offer.dealer?.city || "Regional"} · Variant: {offer.queueEntry?.queue?.variant} · Color: {offer.inventory?.color}
-                        </p>
+              {pendingOffers.map((offer) => {
+                const offerCarModel = offer.queueEntry?.queue?.carModel;
+                return (
+                  <div key={offer.offerId} className="p-4 rounded-xl border border-amber-200 bg-white shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex gap-4">
+                        <div className="w-24 h-20 rounded overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                          <VehicleImage
+                            src={offerCarModel?.imageUrl}
+                            alt={`${offerCarModel?.brand} ${offerCarModel?.model}`}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <strong className="text-base text-slate-900 font-bold">
+                                {offerCarModel?.brand} {offerCarModel?.model}
+                              </strong>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Dealer: <strong>{offer.dealer?.dealerName}</strong> ({offer.dealer?.city})
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                Variant: {offer.queueEntry?.queue?.variant} · Color: {offer.inventory?.color}
+                              </p>
+                            </div>
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold uppercase">
+                              Pending
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold uppercase">
-                        Pending Decision
-                      </span>
+
+                      <div className="mt-3">
+                        <PriceBreakdown pricing={offer} title="Itemized Offer Breakdown" />
+                      </div>
                     </div>
 
-                    <div className="mt-3">
-                      <PriceBreakdown pricing={offer} title="Itemized Offer Breakdown" />
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex gap-3">
+                      <button
+                        className="primary-action flex-1 text-xs"
+                        onClick={() =>
+                          action(
+                            () => customerApi.acceptOffer(token, offer.offerId),
+                            "Offer accepted! Booking confirmed."
+                          )
+                        }
+                      >
+                        Accept & Confirm Booking
+                      </button>
+                      <button
+                        className="danger-action flex-1 text-xs text-center border border-red-200 rounded-md py-1.5"
+                        onClick={() =>
+                          action(
+                            () => customerApi.rejectOffer(token, offer.offerId),
+                            "Offer rejected."
+                          )
+                        }
+                      >
+                        Reject Offer
+                      </button>
                     </div>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex gap-3">
-                    <button
-                      className="primary-action flex-1 text-xs"
-                      onClick={() =>
-                        action(
-                          () => customerApi.acceptOffer(token, offer.offerId),
-                          "Offer accepted! Booking confirmed."
-                        )
-                      }
-                    >
-                      Accept & Confirm Booking
-                    </button>
-                    <button
-                      className="danger-action flex-1 text-xs text-center border border-red-200 rounded-md py-1.5"
-                      onClick={() =>
-                        action(
-                          () => customerApi.rejectOffer(token, offer.offerId),
-                          "Offer rejected."
-                        )
-                      }
-                    >
-                      Reject Offer
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
 
-        {/* My Active Waiting Queues */}
-        <section className="surface">
-          <h2>My Centralized Waiting Queues ({data.queues.length})</h2>
-          <p className="section-copy">
-            Fair First-In, First-Out (FIFO) queue positions across certified regional dealerships. Dealers make direct offers to queued customers as stock allocates.
-          </p>
-
-          <div className="mt-4 divide-y divide-slate-100">
-            {data.queues.map((entry) => (
-              <div key={entry.entryId} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <strong className="text-slate-900 font-bold">
-                      {entry.brand} {entry.model}
-                    </strong>
-                    <span className="text-xs text-slate-600">
-                      ({entry.variant} · {entry.city})
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        entry.status === "WAITING"
-                          ? "bg-blue-100 text-blue-800"
-                          : entry.status === "OFFERED"
-                          ? "bg-amber-100 text-amber-800"
-                          : entry.status === "COMPLETED"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {entry.status}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-500 mt-1">
-                    Preferred Color: <span className="font-semibold text-slate-700">{entry.colorPreference || "Any Color"}</span> · Position in Line:{" "}
-                    <span className="font-bold text-blue-700">#{entry.position || 1}</span> · Joined: {new Date(entry.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-
-                <div>
-                  {["WAITING", "OFFERED"].includes(entry.status) && (
-                    <button
-                      className="danger-action text-xs"
-                      onClick={() => {
-                        if (window.confirm("Leave this vehicle waiting queue?")) {
-                          action(
-                            () => customerApi.leaveQueue(token, entry.queueId),
-                            "Left queue successfully"
-                          );
-                        }
-                      }}
-                    >
-                      Leave Queue
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {data.queues.length === 0 && (
-              <p className="empty-state">You have not joined any vehicle queues yet. Explore available stock below to join.</p>
-            )}
-          </div>
-        </section>
-
-        {/* Available Vehicle Inventory & Catalogue */}
+        {/* 1. Official Vehicle Catalogue & Imagery */}
         <section className="surface">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
-              <h2>Browse Vehicles & Dealership Inventory</h2>
+              <h2>Official Vehicle Catalogue ({data.cars.length})</h2>
               <p className="section-copy">
-                Explore verified dealer inventory. Official vehicle photographs are set by administrators; pricing breakdowns reflect dealer on-road estimates.
+                Official catalogue vehicle photographs are managed centrally by platform administrators. You can join transparent regional queues for any model.
               </p>
             </div>
             <div>
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search brand, model, variant, city…"
+                placeholder="Search catalogue models…"
                 className="w-full sm:w-64 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900"
               />
             </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mt-5">
+            {visibleCars.map((car) => {
+              const stockItems = data.inventory.filter((i) => i.carModelId === car.carModelId);
+              const totalStock = stockItems.reduce((acc, i) => acc + (i.availableUnits || 0), 0);
+
+              return (
+                <article
+                  key={car.carModelId}
+                  className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="w-full h-40 bg-slate-100 overflow-hidden flex items-center justify-center">
+                      <VehicleImage
+                        src={car.imageUrl}
+                        alt={`${car.brand} ${car.model}`}
+                      />
+                    </div>
+
+                    <div className="p-3.5">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold tracking-wider uppercase text-blue-600">{car.brand}</p>
+                          <h3 className="text-base font-bold text-slate-900 leading-tight mt-0.5">{car.model}</h3>
+                        </div>
+                        {car.imageUrl ? (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
+                            Official Photo
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold">
+                            Standard
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-slate-500 mt-2">
+                        {totalStock > 0 ? (
+                          <span className="text-emerald-700 font-semibold">
+                            ● {totalStock} unit(s) available in region
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">
+                            ○ Pre-order queue open
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 pt-0">
+                    <button
+                      className="primary-action w-full text-xs"
+                      onClick={() => openJoinModalFromCar(car)}
+                    >
+                      Join Waiting Queue
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+            {visibleCars.length === 0 && (
+              <p className="empty-state col-span-full">No vehicles match your search.</p>
+            )}
+          </div>
+        </section>
+
+        {/* 2. Available Dealer Inventory & On-Road Pricing */}
+        <section className="surface">
+          <div className="border-b border-slate-200 pb-3">
+            <h2>Available Dealership Stock & Itemized Pricing ({data.inventory.length})</h2>
+            <p className="section-copy">
+              Vehicles ready for delivery at authorized dealerships. Prices include full on-road estimates (ex-showroom, insurance, RTO, accessories, and dealer discount).
+            </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 mt-5">
@@ -357,7 +404,7 @@ export default function CustomerDashboard() {
                 <div className="p-4 pt-0">
                   <button
                     className="primary-action w-full text-xs"
-                    onClick={() => openJoinModal(item)}
+                    onClick={() => openJoinModalFromInventory(item)}
                   >
                     Join Queue for this Vehicle
                   </button>
@@ -366,13 +413,90 @@ export default function CustomerDashboard() {
             ))}
             {visibleInventory.length === 0 && (
               <p className="empty-state col-span-full">
-                No matching dealer inventory found. Catalogue models may exist without available regional stock.
+                No matching dealer stock found. Check the catalogue above to pre-order or join a waiting queue.
               </p>
             )}
           </div>
         </section>
 
-        {/* Booking History & Irrevocable Price Snapshots */}
+        {/* 3. My Active Waiting Queues */}
+        <section className="surface">
+          <h2>My Centralized Waiting Queues ({data.queues.length})</h2>
+          <p className="section-copy">
+            Transparent FIFO waiting lists. Dealers review customer queues and send direct on-road quotes as vehicles allocate.
+          </p>
+
+          <div className="mt-4 divide-y divide-slate-100">
+            {data.queues.map((entry) => {
+              const carModel = data.cars.find((c) => c.carModelId === entry.carModelId);
+              const carImg = entry.imageUrl || carModel?.imageUrl;
+
+              return (
+                <div key={entry.entryId} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-16 h-12 rounded overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                      <VehicleImage
+                        src={carImg}
+                        alt={`${entry.brand} ${entry.model}`}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <strong className="text-slate-900 font-bold">
+                          {entry.brand} {entry.model}
+                        </strong>
+                        <span className="text-xs text-slate-600">
+                          ({entry.variant} · {entry.city})
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                            entry.status === "WAITING"
+                              ? "bg-blue-100 text-blue-800"
+                              : entry.status === "OFFERED"
+                              ? "bg-amber-100 text-amber-800"
+                              : entry.status === "COMPLETED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {entry.status}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        Preferred Color: <span className="font-semibold text-slate-700">{entry.colorPreference || "Any Color"}</span> · Position in Line:{" "}
+                        <span className="font-bold text-blue-700">#{entry.position || 1}</span> · Joined: {new Date(entry.joinedAt || entry.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    {["WAITING", "OFFERED"].includes(entry.status) && (
+                      <button
+                        className="danger-action text-xs"
+                        onClick={() => {
+                          if (window.confirm("Leave this vehicle waiting queue?")) {
+                            action(
+                              () => customerApi.leaveQueue(token, entry.queueId),
+                              "Left queue successfully"
+                            );
+                          }
+                        }}
+                      >
+                        Leave Queue
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {data.queues.length === 0 && (
+              <p className="empty-state">You have not joined any vehicle queues yet. Explore the catalogue or inventory above to join.</p>
+            )}
+          </div>
+        </section>
+
+        {/* 4. Booking History & Irrevocable Price Snapshots */}
         <section className="surface">
           <h2>Booking History & Price Snapshots ({data.bookings.length})</h2>
           <p className="section-copy">
@@ -385,35 +509,43 @@ export default function CustomerDashboard() {
                 key={booking.bookingId}
                 className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4"
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <strong className="text-base text-slate-900 font-bold">
-                      {booking.inventory?.carModel?.brand} {booking.inventory?.carModel?.model}
-                    </strong>
-                    <span className="text-xs text-slate-600">
-                      ({booking.inventory?.variant} · {booking.inventory?.color})
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        booking.status === "CONFIRMED"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {booking.status}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-500 mt-1">
-                    Dealer: <strong>{booking.dealer?.dealerName || booking.inventory?.dealer?.dealerName || "Authorized Dealer"}</strong> · City: {booking.dealer?.city || booking.inventory?.dealer?.city || "N/A"} · Booking Date: {new Date(booking.createdAt).toLocaleDateString()}
-                  </p>
-
-                  <div className="mt-3">
-                    <PriceBreakdown
-                      pricing={booking.priceSnapshot || { totalPrice: booking.totalPrice }}
-                      title="Irrevocable Booking Snapshot"
-                      compact
+                <div className="flex gap-4 items-start">
+                  <div className="w-24 h-20 rounded overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                    <VehicleImage
+                      src={booking.inventory?.carModel?.imageUrl}
+                      alt={`${booking.inventory?.carModel?.brand} ${booking.inventory?.carModel?.model}`}
                     />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <strong className="text-base text-slate-900 font-bold">
+                        {booking.inventory?.carModel?.brand} {booking.inventory?.carModel?.model}
+                      </strong>
+                      <span className="text-xs text-slate-600">
+                        ({booking.inventory?.variant} · {booking.inventory?.color})
+                      </span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                          booking.status === "CONFIRMED"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {booking.status}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Dealer: <strong>{booking.dealer?.dealerName || booking.inventory?.dealer?.dealerName || "Authorized Dealer"}</strong> · City: {booking.dealer?.city || booking.inventory?.dealer?.city || "N/A"} · Booking Date: {new Date(booking.createdAt).toLocaleDateString()}
+                    </p>
+
+                    <div className="mt-3">
+                      <PriceBreakdown
+                        pricing={booking.priceSnapshot || { totalPrice: booking.totalPrice }}
+                        title="Irrevocable Booking Snapshot"
+                        compact
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -447,31 +579,66 @@ export default function CustomerDashboard() {
       {joinModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-md w-full shadow-lg">
-            <h3 className="text-lg font-bold text-slate-900">
-              Join Waiting Queue
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              {joinModal.brand} {joinModal.model} ({joinModal.variant} · {joinModal.city})
-            </p>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-16 h-12 rounded overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                <VehicleImage src={joinModal.imageUrl} alt={`${joinModal.brand} ${joinModal.model}`} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 leading-tight">
+                  Join Waiting Queue
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {joinModal.brand} {joinModal.model}
+                </p>
+              </div>
+            </div>
 
-            <form className="mt-4 space-y-4" onSubmit={handleJoinQueueSubmit}>
+            <form className="space-y-3" onSubmit={handleJoinQueueSubmit}>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Preferred Exterior Color
+                  Variant *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. VXi, Alpha, SX(O)"
+                  value={modalVariant}
+                  onChange={(e) => setModalVariant(e.target.value)}
+                  className="w-full text-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  City / Region *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Delhi, Mumbai, Pune, Bengaluru"
+                  value={modalCity}
+                  onChange={(e) => setModalCity(e.target.value)}
+                  className="w-full text-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Preferred Exterior Color (Optional)
                 </label>
                 <input
                   type="text"
                   placeholder="e.g. Pearl White, Magma Grey, or leave blank for Any"
-                  value={colorPreference}
-                  onChange={(e) => setColorPreference(e.target.value)}
+                  value={modalColor}
+                  onChange={(e) => setModalColor(e.target.value)}
                   className="w-full text-xs rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Dealers will offer vehicles that match or closely match your preference.
+                  Regional dealers review active queues and submit quotes matching your preference.
                 </p>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 mt-4">
                 <button
                   type="button"
                   className="secondary-action text-xs"
