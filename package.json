@@ -1,0 +1,15 @@
+{
+  "name": "autoqueue",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AutoQueue - Centralized Car Reservation Queue System",
+  "scripts": {
+    "start": "npm --prefix server start",
+    "dev": "npm --prefix server run dev",
+    "start:server": "npm --prefix server start",
+    "start:frontend": "npm --prefix frontend start",
+    "dev:server": "npm --prefix server run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build"
+  }
+}

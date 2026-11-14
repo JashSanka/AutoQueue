@@ -591,7 +591,8 @@ const browseInventoryQuerySchema = z.object({
     carModelId: z.uuid({ message: "Invalid carModelId query parameter" }).optional(),
     city: z.string().trim().min(1, "city must not be empty").optional(),
     variant: z.string().trim().min(1, "variant must not be empty").optional(),
-    color: z.string().trim().min(1, "color must not be empty").optional()
+    color: z.string().trim().min(1, "color must not be empty").optional(),
+    includeTest: z.string().optional()
 });
 
 /**
@@ -613,7 +614,8 @@ const browseInventory = async (req, res) => {
             });
         }
 
-        const { carModelId, city, variant, color } = queryValidation.data;
+        const { carModelId, city, variant, color, includeTest } = queryValidation.data;
+        const allowTest = includeTest === "true";
 
         const items = await prisma.inventory.findMany({
             where: {
@@ -623,6 +625,14 @@ const browseInventory = async (req, res) => {
                     verified: true,
                     ...(city && { city: { contains: city, mode: "insensitive" } })
                 },
+                ...(!allowTest && {
+                    carModel: {
+                        brand: {
+                            notIn: ["AuditBrand", "TestBrand"],
+                            not: { startsWith: "AuditBrand" }
+                        }
+                    }
+                }),
                 ...(carModelId && { carModelId }),
                 ...(variant && { variant: { contains: variant, mode: "insensitive" } }),
                 ...(color && { color: { contains: color, mode: "insensitive" } })

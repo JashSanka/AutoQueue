@@ -16,3 +16,7 @@ server/uploads/
 
 # vite
 frontend/.vite/
+
+# database dumps & backups
+*.dump
+*.sql

@@ -14,7 +14,7 @@ const queueRoutes = require("./routes/queue.routes");
 const offerRoutes = require("./routes/offer.routes");
 const bookingRoutes = require("./routes/booking.routes");
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || true }));
@@ -34,6 +34,17 @@ app.get("/health", (req, res) => {
     res.status(200).json({ message: "AutoQueue API running" });
 });
 
-app.listen(PORT, () => {
-    console.log(`server running on port ${PORT}`);
+const server = app.listen(PORT, () => {
+    console.log(`AutoQueue server running on http://localhost:${PORT}`);
+});
+
+server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+        console.error(`Port ${PORT} is already in use by another process.`);
+        console.error(`To free port ${PORT}, run: kill $(lsof -t -i:${PORT})`);
+        process.exit(1);
+    } else {
+        console.error("Server error:", err);
+        process.exit(1);
+    }
 });
