@@ -291,11 +291,6 @@ export default function AdminWorkspace() {
                   }}
                   className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                 />
-                {newCar.imageUrl && !newCar.imageUrl.startsWith("/uploads/") && !newCar.imageUrl.match(/\.(jpg|jpeg|png|webp|avif|gif|svg)($|\?)/i) && (
-                  <p className="text-[10px] text-amber-600 mt-1 leading-tight">
-                    ⚠️ Ensure this URL is a direct image link (e.g. .jpg/.png) and not a webpage link.
-                  </p>
-                )}
               </div>
 
               <div>
@@ -463,11 +458,6 @@ function CatalogueCard({ item, token, onRefresh, notify }) {
               className="mt-1 w-full text-xs rounded border border-slate-300 bg-white px-2 py-1 text-slate-900"
             />
           </label>
-          {imageUrl && !imageUrl.startsWith("/uploads/") && !imageUrl.match(/\.(jpg|jpeg|png|webp|avif|gif|svg)($|\?)/i) && (
-            <p className="text-[10px] text-amber-600 mt-1 leading-tight">
-              ⚠️ Ensure this URL is a direct image link (e.g. .jpg/.png) and not a webpage link, or click "Upload file" to select an image from your computer.
-            </p>
-          )}
 
           <div className="mt-2 flex items-center justify-between">
             <label className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer">
