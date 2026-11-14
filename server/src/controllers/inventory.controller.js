@@ -1,6 +1,9 @@
 const prisma = require("../config/prisma");
 const { Prisma } = require("@prisma/client");
 const { z } = require("zod");
+const fs = require("fs/promises");
+const path = require("path");
+const { randomUUID } = require("crypto");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -11,6 +14,12 @@ function calculateTotalPrice({ exShowroom, insurance, rto, accessories, discount
     const acc = new Prisma.Decimal(accessories.toString());
     const disc = new Prisma.Decimal((discount ?? 0).toString());
     return ex.plus(ins).plus(r).plus(acc).minus(disc);
+}
+
+function hasExpectedImageSignature(type, bytes) {
+    if (type === "png") return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (type === "jpeg") return bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+    return bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
 }
 
 function formatInventory(item) {
@@ -41,6 +50,10 @@ function formatInventory(item) {
 
 const inventoryIdSchema = z.uuid({
     message: "Invalid inventory ID"
+});
+
+const imageUploadSchema = z.object({
+    imageDataUrl: z.string().min(1, "An image file is required"),
 });
 
 const createInventorySchema = z.object({
@@ -587,6 +600,50 @@ const updateInventoryStatus = async (req, res) => {
     }
 };
 
+/**
+ * Stores a dealer supplied model image outside source files, then updates the
+ * existing CarModel.imageUrl field. Inventory has no image field in the schema,
+ * so a model image is intentionally shared by all listings of that model.
+ */
+const uploadInventoryImage = async (req, res) => {
+    try {
+        const idResult = inventoryIdSchema.safeParse(req.params.inventoryId);
+        const bodyResult = imageUploadSchema.safeParse(req.body);
+        if (!idResult.success || !bodyResult.success) {
+            return res.status(400).json({ success: false, message: "A valid inventory ID and image file are required" });
+        }
+        const inventory = await prisma.inventory.findFirst({
+            where: { inventoryId: idResult.data, dealerId: req.dealer.dealerId },
+            select: { inventoryId: true, carModelId: true },
+        });
+        if (!inventory) return res.status(404).json({ success: false, message: "Inventory not found" });
+
+        const match = bodyResult.data.imageDataUrl.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+        if (!match) return res.status(400).json({ success: false, message: "Upload a PNG, JPEG, or WebP image" });
+        const bytes = Buffer.from(match[2], "base64");
+        if (bytes.length === 0 || bytes.length > 4 * 1024 * 1024) {
+            return res.status(413).json({ success: false, message: "Image must be between 1 byte and 4 MB" });
+        }
+        if (!hasExpectedImageSignature(match[1], bytes)) return res.status(400).json({ success: false, message: "The uploaded file does not match its image type" });
+
+        const extension = match[1] === "jpeg" ? "jpg" : match[1];
+        const uploadsDir = path.join(__dirname, "../../uploads");
+        await fs.mkdir(uploadsDir, { recursive: true });
+        const filename = `${inventory.carModelId}-${randomUUID()}.${extension}`;
+        await fs.writeFile(path.join(uploadsDir, filename), bytes, { flag: "wx" });
+        const imageUrl = `/uploads/${filename}`;
+        const carModel = await prisma.carModel.update({
+            where: { carModelId: inventory.carModelId },
+            data: { imageUrl },
+            select: { carModelId: true, brand: true, model: true, imageUrl: true },
+        });
+        return res.status(200).json({ success: true, message: "Vehicle image updated", carModel });
+    } catch (error) {
+        console.error("Upload inventory image error:", error);
+        return res.status(500).json({ success: false, message: "Unable to save vehicle image" });
+    }
+};
+
 const browseInventoryQuerySchema = z.object({
     carModelId: z.uuid({ message: "Invalid carModelId query parameter" }).optional(),
     city: z.string().trim().min(1, "city must not be empty").optional(),
@@ -675,6 +732,7 @@ module.exports = {
     getInventoryById,
     updateInventory,
     updateInventoryStatus,
+    uploadInventoryImage,
     browseInventory,
     calculateTotalPrice,
     formatInventory,

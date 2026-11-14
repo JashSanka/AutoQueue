@@ -7,6 +7,7 @@ const {
     getInventoryById,
     updateInventory,
     updateInventoryStatus,
+    uploadInventoryImage,
     browseInventory
 } = require("../controllers/inventory.controller");
 
@@ -53,6 +54,14 @@ router.patch(
     authorize("DEALER"),
     dealerVerified,
     updateInventoryStatus
+);
+
+router.patch(
+    "/:inventoryId/image",
+    authenticate,
+    authorize("DEALER"),
+    dealerVerified,
+    uploadInventoryImage
 );
 
 router.patch(

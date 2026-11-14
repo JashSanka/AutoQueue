@@ -22,6 +22,7 @@ export const dealerApi = {
   createInventory: (token, values) => api("/inventory", { token, method: "POST", body: values }),
   updateInventory: (token, id, values) => api(`/inventory/${id}`, { token, method: "PATCH", body: values }),
   updateInventoryStatus: (token, id, values) => api(`/inventory/${id}/status`, { token, method: "PATCH", body: values }),
+  uploadInventoryImage: (token, id, imageDataUrl) => api(`/inventory/${id}/image`, { token, method: "PATCH", body: { imageDataUrl } }),
   createOffer: (token, values) => api("/offers", { token, method: "POST", body: values }),
   updateOffer: (token, id, values) => api(`/offers/${id}`, { token, method: "PATCH", body: values }),
 };

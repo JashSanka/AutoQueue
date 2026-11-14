@@ -9,10 +9,10 @@ frontend/dist/
 # env files
 .env
 server/.env
+server/uploads/
 
 # macOS
 .DS_Store
 
 # vite
 frontend/.vite/
-

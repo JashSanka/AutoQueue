@@ -1,6 +1,6 @@
 # API route inventory
 
-All routes are mounted by `server/src/server.js`. Authentication means a `Bearer` JWT. There are 35 API routes (plus `GET /health`). No current frontend screen calls the diagnostic auth routes.
+All routes are mounted by `server/src/server.js`. Authentication means a `Bearer` JWT. There are 36 API routes (plus `GET /health` and public `/uploads/:filename` image files). No current frontend screen calls the diagnostic auth routes.
 
 ## Authentication
 
@@ -34,6 +34,7 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 |GET|`/api/inventory/:inventoryId`|Dealer-owned inventory item|JWT / verified DEALER|UUID|200;400,403,404|
 |PATCH|`/api/inventory/:inventoryId`|Update dealer-owned inventory|JWT / verified DEALER|UUID; allowed inventory fields|200;400,403,404,409|
 |PATCH|`/api/inventory/:inventoryId/status`|Toggle owned inventory active state|JWT / verified DEALER|UUID; `active`|200;400,403,404|
+|PATCH|`/api/inventory/:inventoryId/image`|Upload a model image from dealer inventory|JWT / verified DEALER|UUID; `imageDataUrl` for PNG, JPEG, or WebP, up to 4 MB|200;400,403,404,413|
 
 ## Queues
 
