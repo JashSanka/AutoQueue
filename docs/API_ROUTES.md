@@ -1,6 +1,6 @@
 # API route inventory
 
-All routes are mounted by `server/src/server.js`. Authentication means a `Bearer` JWT. There are 34 API routes (plus `GET /health`). No current frontend screen calls the diagnostic auth routes.
+All routes are mounted by `server/src/server.js`. Authentication means a `Bearer` JWT. There are 35 API routes (plus `GET /health`). No current frontend screen calls the diagnostic auth routes.
 
 ## Authentication
 
@@ -22,6 +22,7 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 |PATCH|`/api/cars/:carModelId`|Update car model|JWT / ADMIN|UUID; mutable catalogue fields|200;400,404,409|
 |DELETE|`/api/cars/:carModelId`|Delete unreferenced car model|JWT / ADMIN|UUID|200;400,404,409|
 |PATCH|`/api/admin/dealers/:dealerId/verify`|Verify dealership|JWT / ADMIN|dealer UUID|200;400,404,409|
+|GET|`/api/admin/dealers`|List dealer profiles and verification status|JWT / ADMIN|—|200;401,403|
 
 ## Inventory
 
@@ -66,4 +67,14 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 |GET|`/api/bookings/:bookingId`|Owned booking detail|JWT / CUSTOMER or DEALER; ownership required|UUID|200;400,403,404|
 |PATCH|`/api/bookings/:bookingId/cancel`|Cancel owned confirmed booking|JWT / CUSTOMER or verified owning DEALER|UUID|200;400,403,404,409|
 
-The web UI uses auth, catalogue browsing, inventory browsing, customer queues/offers/bookings, and dealer summary endpoints. It does not currently provide forms for every existing dealer mutation or the admin verification endpoint; no frontend function lacks a backend endpoint.
+## Frontend integration map
+
+|Backend module|Endpoints|Frontend page/component|Role|Integrated|
+|---|---|---|---|---|
+|Authentication|`register`, `login`, `me`|`PortalAuth`, `AuthContext`|Customer, dealer, admin|Yes; admin registration deliberately excluded|
+|Catalogue|all `/api/cars` routes|Customer dashboard discovery; admin catalogue controls|Customer, admin|Customer browsing and admin create/delete integrated; admin PATCH is API-only|
+|Dealer management|`GET /api/admin/dealers`, verification PATCH|`AdminWorkspace`|Admin|Yes|
+|Inventory|browse, my, create|Customer discovery; `DealerWorkspace`|Customer, dealer|Yes; dealer update/status APIs are available but not yet surfaced as controls|
+|Queues|join, my, leave|`CustomerDashboard`|Customer|Yes; detail and position are represented in `my` response, dedicated detail/position endpoints are API-only|
+|Offers|eligible, create, my, update, customer reads/reject|Customer and dealer workspaces|Customer, dealer|Yes; individual offer detail endpoint is API-only|
+|Bookings|accept, my, dealer/my, cancel|Customer and dealer workspaces|Customer, dealer|Yes; single booking detail endpoint is API-only|
