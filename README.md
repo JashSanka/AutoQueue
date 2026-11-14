@@ -49,3 +49,5 @@ The web client proxies `/api` to `http://localhost:3000` in development. Start E
 Customer, dealer, and admin roles are enforced by backend middleware. Dealer mutations require an admin-verified dealer profile. See [API documentation](docs/API_ROUTES.md), [Electron IPC documentation](docs/ELECTRON_IPC.md), and [architecture](docs/ARCHITECTURE.md).
 
 For a local, database-backed demonstration, see [demo data instructions](docs/DEMO_DATA.md). Demo seeding is explicit and development-only; it never runs during normal startup.
+
+Pricing and vehicle-image behavior, including the schema-backed limitations, are documented in [PRICING_AND_IMAGES.md](docs/PRICING_AND_IMAGES.md).
