@@ -34,7 +34,7 @@ async function handleResponse(response) {
  * Register a new Customer account
  * Backend expects: { name, email, password, phone, role: "CUSTOMER" }
  */
-export async function registerCustomer({ name, email, password, phone }) {
+export async function registerUser({ name, email, password, phone, role = 'CUSTOMER', dealerName, city, address }) {
   const response = await fetch(`${API_BASE}/register`, {
     method: 'POST',
     headers: {
@@ -45,12 +45,15 @@ export async function registerCustomer({ name, email, password, phone }) {
       email: email.trim().toLowerCase(),
       password,
       phone: phone.trim(),
-      role: 'CUSTOMER',
+      role,
+      ...(role === 'DEALER' ? { dealerName: dealerName?.trim(), city: city?.trim(), address: address?.trim() } : {}),
     }),
   });
 
   return handleResponse(response);
 }
+
+export const registerCustomer = (details) => registerUser({ ...details, role: 'CUSTOMER' });
 
 /**
  * Login Customer with email and password
@@ -85,4 +88,3 @@ export async function getProfile(token) {
 
   return handleResponse(response);
 }
-

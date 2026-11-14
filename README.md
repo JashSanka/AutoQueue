@@ -25,3 +25,27 @@ Customers can explore available cars, compare dealer-wise pricing, join a shared
 - **ORM:** Prisma
 - **Database:** PostgreSQL
 - **Authentication:** JWT
+# AutoQueue
+
+AutoQueue is a shared vehicle queue platform: customers join a model/variant/city queue, verified dealers make offers, and one accepted offer becomes a price-snapshotted booking.
+
+## Stack and layout
+
+- `server/` — Express 5, Prisma 7, PostgreSQL, JWT, Zod
+- `frontend/` — React 19, Vite, Tailwind and Electron
+- `docs/` — API, Electron IPC and architecture references
+
+## Setup
+
+Create `server/.env` with `DATABASE_URL`, `JWT_SECRET`, optional `JWT_EXPIRES_IN`, and optional `CORS_ORIGIN`. The Prisma schema is authoritative: use the existing migrations/database configuration and do not edit the schema to run the application.
+
+```sh
+cd server && npm install && npm run dev
+cd frontend && npm install && npm run dev
+```
+
+The web client proxies `/api` to `http://localhost:3000` in development. Start Electron after Vite is running with `npm run electron:dev`; build the renderer with `npm run build`; package a macOS DMG with `npm run electron:package`.
+
+Customer, dealer, and admin roles are enforced by backend middleware. Dealer mutations require an admin-verified dealer profile. See [API documentation](docs/API_ROUTES.md), [Electron IPC documentation](docs/ELECTRON_IPC.md), and [architecture](docs/ARCHITECTURE.md).
+
+For a local, database-backed demonstration, see [demo data instructions](docs/DEMO_DATA.md). Demo seeding is explicit and development-only; it never runs during normal startup.

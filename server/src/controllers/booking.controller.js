@@ -1,5 +1,6 @@
 const prisma = require("../config/prisma");
 const { z } = require("zod");
+const { expireOfferIfNeeded } = require("../services/offerLifecycle");
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -13,7 +14,6 @@ const bookingInclude = {
         select: {
             userId: true,
             name: true,
-            email: true,
             phone: true,
         },
     },
@@ -62,46 +62,6 @@ const bookingInclude = {
     },
 };
 
-/**
- * Lazy offer expiration check within transaction or standalone.
- * If offer is PENDING and expired, transitions status to EXPIRED.
- * If no other valid pending offers remain for the queue entry, reverts QueueEntry to WAITING.
- * Never modifies a BOOKED or LEFT QueueEntry.
- */
-async function checkAndExpireOffer(offer, tx = prisma) {
-    if (offer.status === "PENDING" && new Date(offer.expiresAt) < new Date()) {
-        const updated = await tx.offer.update({
-            where: { offerId: offer.offerId },
-            data: { status: "EXPIRED" },
-        });
-
-        const otherPendingCount = await tx.offer.count({
-            where: {
-                queueEntryId: offer.queueEntryId,
-                offerId: { not: offer.offerId },
-                status: "PENDING",
-                expiresAt: { gt: new Date() },
-            },
-        });
-
-        if (otherPendingCount === 0) {
-            const entry = await tx.queueEntry.findUnique({
-                where: { entryId: offer.queueEntryId },
-            });
-            // Never modify a BOOKED or LEFT QueueEntry
-            if (entry && entry.status === "OFFERED") {
-                await tx.queueEntry.update({
-                    where: { entryId: offer.queueEntryId },
-                    data: { status: "WAITING" },
-                });
-            }
-        }
-
-        return { ...offer, status: "EXPIRED" };
-    }
-    return offer;
-}
-
 function formatBooking(booking) {
     return {
         bookingId: booking.bookingId,
@@ -119,7 +79,6 @@ function formatBooking(booking) {
             customer: {
                 userId: booking.customer.userId,
                 name: booking.customer.name,
-                email: booking.customer.email,
                 phone: booking.customer.phone,
             },
         }),
@@ -167,6 +126,12 @@ function formatBooking(booking) {
             },
         }),
     };
+}
+
+function formatCustomerBooking(booking) {
+    const result = formatBooking(booking);
+    delete result.customer;
+    return result;
 }
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
@@ -237,11 +202,10 @@ const acceptOffer = async (req, res) => {
             }
 
             if (offer.status === "EXPIRED" || new Date(offer.expiresAt) < new Date()) {
-                // Perform transactional expiration check and reconcile QueueEntry status
-                await checkAndExpireOffer(offer, tx);
-                const err = new Error("Cannot accept an expired offer");
-                err.code = "OFFER_EXPIRED";
-                throw err;
+                // Return a conflict result instead of throwing: expiry/reconciliation
+                // must commit even though acceptance cannot continue.
+                await expireOfferIfNeeded(offer, tx);
+                return { conflict: "OFFER_EXPIRED" };
             }
 
             if (offer.status !== "PENDING") {
@@ -280,6 +244,12 @@ const acceptOffer = async (req, res) => {
             if (offer.inventory.dealerId !== offer.dealerId) {
                 const err = new Error("Inventory does not belong to the offering dealer");
                 err.code = "INVENTORY_DEALER_MISMATCH";
+                throw err;
+            }
+
+            if (!offer.dealer?.verified) {
+                const err = new Error("The offering dealer is no longer verified");
+                err.code = "DEALER_UNVERIFIED";
                 throw err;
             }
 
@@ -337,6 +307,7 @@ const acceptOffer = async (req, res) => {
                     offerId,
                     status: "PENDING",
                     expiresAt: { gt: new Date() },
+                    updatedAt: offer.updatedAt,
                 },
                 data: {
                     status: "ACCEPTED",
@@ -371,8 +342,7 @@ const acceptOffer = async (req, res) => {
                 totalPrice: offer.totalPrice.toString(),
             };
 
-            // 7f. Create or Update Booking record
-            // If the customer previously had a cancelled booking on this entry and rejoined, update that booking
+            // 7f. Each QueueEntry has exactly one immutable Booking history record.
             const createdBooking = await tx.booking.create({
     data: {
         offerId,
@@ -407,10 +377,17 @@ const acceptOffer = async (req, res) => {
             return createdBooking;
         });
 
+        if (result.conflict === "OFFER_EXPIRED") {
+            return res.status(409).json({
+                success: false,
+                message: "Cannot accept an expired offer",
+            });
+        }
+
         return res.status(201).json({
             success: true,
             message: "Booking confirmed successfully",
-            booking: formatBooking(result),
+            booking: formatCustomerBooking(result),
         });
     } catch (err) {
         if (err.code === "OFFER_NOT_FOUND") {
@@ -436,6 +413,7 @@ const acceptOffer = async (req, res) => {
             err.code === "QUEUE_ENTRY_LEFT" ||
             err.code === "QUEUE_CLOSED" ||
             err.code === "INVENTORY_UNAVAILABLE"
+            || err.code === "DEALER_UNVERIFIED"
         ) {
             return res.status(409).json({
                 success: false,
@@ -503,7 +481,7 @@ const getMyBookings = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Customer bookings retrieved successfully",
-            bookings: bookings.map(formatBooking),
+            bookings: bookings.map(formatCustomerBooking),
         });
     } catch (err) {
         console.error("getMyBookings error:", err);
@@ -597,7 +575,9 @@ const getBookingById = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Booking retrieved successfully",
-            booking: formatBooking(booking),
+            booking: req.user.role === "CUSTOMER"
+                ? formatCustomerBooking(booking)
+                : formatBooking(booking),
         });
     } catch (err) {
         console.error("getBookingById error:", err);
@@ -738,7 +718,9 @@ const cancelBooking = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Booking cancelled successfully",
-            booking: formatBooking(result),
+            booking: req.user.role === "CUSTOMER"
+                ? formatCustomerBooking(result)
+                : formatBooking(result),
         });
     } catch (err) {
         if (err.code === "BOOKING_ALREADY_CANCELLED" || err.message === "BOOKING_ALREADY_CANCELLED") {
@@ -773,7 +755,6 @@ module.exports = {
     getDealerBookings,
     getBookingById,
     cancelBooking,
-    checkAndExpireOffer,
     offerIdSchema,
     bookingIdSchema,
     formatBooking,

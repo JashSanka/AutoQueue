@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const { Prisma } = require("@prisma/client");
 const { z } = require("zod");
+const { expireOfferIfNeeded } = require("../services/offerLifecycle");
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -60,44 +61,6 @@ function calculateTotalPrice({ exShowroom, insurance, rto, accessories, discount
     const acc = new Prisma.Decimal(accessories.toString());
     const disc = new Prisma.Decimal((discount ?? 0).toString());
     return ex.plus(ins).plus(r).plus(acc).minus(disc);
-}
-
-/**
- * Lazy offer expiration check.
- * If offer is PENDING and expired, transitions status to EXPIRED.
- * If no other valid pending offers remain for the queue entry, reverts QueueEntry to WAITING.
- */
-async function checkAndExpireOffer(offer, tx = prisma) {
-    if (offer.status === "PENDING" && new Date(offer.expiresAt) < new Date()) {
-        const updated = await tx.offer.update({
-            where: { offerId: offer.offerId },
-            data: { status: "EXPIRED" },
-        });
-
-        const otherPendingCount = await tx.offer.count({
-            where: {
-                queueEntryId: offer.queueEntryId,
-                offerId: { not: offer.offerId },
-                status: "PENDING",
-                expiresAt: { gt: new Date() },
-            },
-        });
-
-        if (otherPendingCount === 0) {
-            const entry = await tx.queueEntry.findUnique({
-                where: { entryId: offer.queueEntryId },
-            });
-            if (entry && entry.status === "OFFERED") {
-                await tx.queueEntry.update({
-                    where: { entryId: offer.queueEntryId },
-                    data: { status: "WAITING" },
-                });
-            }
-        }
-
-        return { ...offer, status: "EXPIRED" };
-    }
-    return offer;
 }
 
 function formatOffer(offer) {
@@ -559,7 +522,7 @@ const getMyOffers = async (req, res) => {
         // Process lazy expiration for any expired pending offers
         const activeOffers = [];
         for (const offer of offers) {
-            const checked = await checkAndExpireOffer(offer);
+            const { offer: checked } = await expireOfferIfNeeded(offer, prisma);
             activeOffers.push(checked);
         }
 
@@ -641,7 +604,7 @@ const updateOffer = async (req, res) => {
         }
 
         // Check expiration first
-        const checkedOffer = await checkAndExpireOffer(offer);
+        const { offer: checkedOffer } = await expireOfferIfNeeded(offer, prisma);
         if (checkedOffer.status !== "PENDING") {
             return res.status(409).json({
                 success: false,
@@ -694,6 +657,7 @@ const updateOffer = async (req, res) => {
                 offerId,
                 status: "PENDING",
                 expiresAt: { gt: new Date() },
+                updatedAt: offer.updatedAt,
             },
             data: {
                 ...(insurance !== undefined && { insurance: ins }),
@@ -818,7 +782,7 @@ const getOffersByQueue = async (req, res) => {
 
         const checkedOffers = [];
         for (const offer of offers) {
-            const checked = await checkAndExpireOffer(offer);
+            const { offer: checked } = await expireOfferIfNeeded(offer, prisma);
             checkedOffers.push(checked);
         }
 
@@ -897,7 +861,7 @@ const getOfferById = async (req, res) => {
             });
         }
 
-        const checkedOffer = await checkAndExpireOffer(offer);
+        const { offer: checkedOffer } = await expireOfferIfNeeded(offer, prisma);
 
         return res.status(200).json({
             success: true,
@@ -960,7 +924,7 @@ const rejectOffer = async (req, res) => {
         }
 
         if (offer.status === "PENDING" && new Date(offer.expiresAt) < new Date()) {
-            await checkAndExpireOffer(offer);
+            await expireOfferIfNeeded(offer, prisma);
             return res.status(409).json({
                 success: false,
                 message: "Offer has expired and cannot be rejected",
@@ -977,10 +941,16 @@ const rejectOffer = async (req, res) => {
 
         // 4. Update status to REJECTED inside transaction and update QueueEntry status
         const result = await prisma.$transaction(async (tx) => {
-            const rejected = await tx.offer.update({
-                where: { offerId },
+            const rejected = await tx.offer.updateMany({
+                where: { offerId, status: "PENDING", updatedAt: offer.updatedAt },
                 data: { status: "REJECTED" },
             });
+
+            if (rejected.count === 0) {
+                const error = new Error("Offer is no longer pending");
+                error.code = "OFFER_NOT_PENDING";
+                throw error;
+            }
 
             // Check if any other valid PENDING offers exist for this queue entry
             const otherPendingCount = await tx.offer.count({
@@ -996,12 +966,16 @@ const rejectOffer = async (req, res) => {
 
             if (otherPendingCount === 0) {
                 // If QueueEntry is already BOOKED or LEFT, do not reactivate it
-                if (offer.queueEntry.status === "OFFERED") {
-                    const updatedEntry = await tx.queueEntry.update({
-                        where: { entryId: offer.queueEntryId },
+                const entry = await tx.queueEntry.findUnique({
+                    where: { entryId: offer.queueEntryId },
+                    include: { queue: { select: { status: true } } },
+                });
+                if (entry?.status === "OFFERED" && entry.queue.status === "OPEN") {
+                    const updatedEntry = await tx.queueEntry.updateMany({
+                        where: { entryId: offer.queueEntryId, status: "OFFERED" },
                         data: { status: "WAITING" },
                     });
-                    finalEntryStatus = updatedEntry.status;
+                    finalEntryStatus = updatedEntry.count ? "WAITING" : entry.status;
                 }
             }
 
@@ -1015,8 +989,8 @@ const rejectOffer = async (req, res) => {
             success: true,
             message: "Offer rejected successfully",
             offer: {
-                offerId: result.offer.offerId,
-                status: result.offer.status,
+                offerId,
+                status: "REJECTED",
             },
             queueEntry: {
                 entryId: offer.queueEntryId,
@@ -1024,6 +998,9 @@ const rejectOffer = async (req, res) => {
             },
         });
     } catch (err) {
+        if (err.code === "OFFER_NOT_PENDING") {
+            return res.status(409).json({ success: false, message: err.message });
+        }
         console.error("rejectOffer error:", err);
         return res.status(500).json({
             success: false,
@@ -1040,7 +1017,6 @@ module.exports = {
     getOffersByQueue,
     getOfferById,
     rejectOffer,
-    checkAndExpireOffer,
     formatOffer,
     offerIdSchema,
     queueIdSchema,

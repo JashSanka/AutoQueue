@@ -186,59 +186,21 @@ const joinQueue = async (req, res) => {
                 });
             }
             if (existingEntry.status === "BOOKED") {
-                // Check if an active confirmed booking exists
-                const confirmedBooking = await prisma.booking.findFirst({
-                    where: {
-                        queueEntryId: existingEntry.entryId,
-                        status: "CONFIRMED",
-                    },
-                });
-
-                if (confirmedBooking) {
-                    return res.status(409).json({
-                        success: false,
-                        message: "You already have a confirmed booking for this queue",
-                    });
-                }
-
-                // Verify that a cancelled booking exists for this entry
-                const cancelledBooking = await prisma.booking.findFirst({
-                    where: {
-                        queueEntryId: existingEntry.entryId,
-                        status: "CANCELLED",
-                    },
-                });
-
-                if (!cancelledBooking) {
-                    return res.status(409).json({
-                        success: false,
-                        message: "You have already booked through this queue",
-                    });
-                }
-
-                // Invalidate any previous pending or accepted offers from previous booking cycle
-                await prisma.offer.updateMany({
-                    where: {
-                        queueEntryId: existingEntry.entryId,
-                        status: { in: ["PENDING", "ACCEPTED"] },
-                    },
-                    data: {
-                        status: "CANCELLED",
-                    },
-                });
-
-                // Reactivate QueueEntry with a fresh FIFO timestamp and updated preferences
-                entry = await prisma.queueEntry.update({
-                    where: { entryId: existingEntry.entryId },
-                    data: {
-                        status: "WAITING",
-                        joinedAt: new Date(),
-                        preferredDealerId: preferredDealerId ?? null,
-                        colorPreference: colorPreference ?? null,
-                        maxBudget: maxBudget != null ? maxBudget.toString() : null,
-                    },
+                return res.status(409).json({
+                    success: false,
+                    message: "This queue entry already has booking history and cannot be reactivated",
                 });
             } else if (existingEntry.status === "LEFT") {
+                const booking = await prisma.booking.findUnique({
+                    where: { queueEntryId: existingEntry.entryId },
+                    select: { bookingId: true },
+                });
+                if (booking) {
+                    return res.status(409).json({
+                        success: false,
+                        message: "This queue entry has booking history and cannot be reactivated",
+                    });
+                }
                 // Invalidate any leftover pending offers from previous cycle
                 await prisma.offer.updateMany({
                     where: {
