@@ -126,7 +126,18 @@ const createCar = async (req, res) => {
  */
 const getAllCars = async (req, res) => {
     try {
+        const includeTest = req.query?.includeTest === "true";
+        const where = includeTest
+            ? {}
+            : {
+                  AND: [
+                      { brand: { not: { startsWith: "AuditBrand" } } },
+                      { brand: { not: { startsWith: "TestBrand" } } }
+                  ]
+              };
+
         const cars = await prisma.carModel.findMany({
+            where,
             orderBy: [{ brand: "asc" }, { model: "asc" }],
             select: {
                 carModelId: true,
