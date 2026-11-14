@@ -1,5 +1,8 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
 const app = express();
 
 const authRoutes = require("./routes/auth.routes");
@@ -12,7 +15,10 @@ const bookingRoutes = require("./routes/booking.routes");
 
 const PORT = 3000;
 
-app.use(express.json());
+app.use(helmet());
+app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || true }));
+app.use(express.json({ limit: "100kb" }));
+app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
