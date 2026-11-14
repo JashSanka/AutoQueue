@@ -32,5 +32,6 @@ export const adminApi = {
   cars: (token) => api("/cars", { token }),
   createCar: (token, values) => api("/cars", { token, method: "POST", body: values }),
   updateCar: (token, id, values) => api(`/cars/${id}`, { token, method: "PATCH", body: values }),
+  uploadCarImage: (token, id, imageDataUrl) => api(`/cars/${id}/image`, { token, method: "POST", body: { imageDataUrl } }),
   deleteCar: (token, id) => api(`/cars/${id}`, { token, method: "DELETE" }),
 };

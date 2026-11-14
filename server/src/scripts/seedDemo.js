@@ -8,9 +8,16 @@ const prisma = require("../config/prisma");
 
 const password = "DemoPass123!";
 const cars = [
-    ["Tata", "Nexon"], ["Tata", "Punch"], ["Mahindra", "XUV700"], ["Mahindra", "Thar"],
-    ["Hyundai", "Creta"], ["Hyundai", "i20"], ["Maruti Suzuki", "Swift"], ["Maruti Suzuki", "Brezza"],
-    ["Kia", "Seltos"], ["Toyota", "Innova Hycross"],
+    ["Tata", "Nexon", "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80"],
+    ["Tata", "Punch", "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80"],
+    ["Mahindra", "XUV700", "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80"],
+    ["Mahindra", "Thar", "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80"],
+    ["Hyundai", "Creta", "https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=800&q=80"],
+    ["Hyundai", "i20", "https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?auto=format&fit=crop&w=800&q=80"],
+    ["Maruti Suzuki", "Swift", "https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=800&q=80"],
+    ["Maruti Suzuki", "Brezza", "https://images.unsplash.com/photo-1502877338535-766e1452684a?auto=format&fit=crop&w=800&q=80"],
+    ["Kia", "Seltos", "https://images.unsplash.com/photo-1619682817481-e994891cd1f5?auto=format&fit=crop&w=800&q=80"],
+    ["Toyota", "Innova Hycross", "https://images.unsplash.com/photo-1590362891991-f776e747a588?auto=format&fit=crop&w=800&q=80"],
 ];
 const dealers = [
     { name: "Nexon Motors Mumbai", email: "mumbai.dealer@autoqueue.demo", phone: "+919800000101", city: "Mumbai", address: "Andheri East, Mumbai" },
@@ -33,7 +40,15 @@ async function seedDemo() {
     const admin = await ensureUser({ name: "Demo Administrator", email: "admin@autoqueue.demo", phone: "+919800000001", role: "ADMIN" });
     const customer = await ensureUser({ name: "Demo Customer", email: "customer@autoqueue.demo", phone: "+919800000002", role: "CUSTOMER" });
     const carRows = [];
-    for (const [brand, model] of cars) carRows.push(await prisma.carModel.upsert({ where: { brand_model: { brand, model } }, update: {}, create: { brand, model } }));
+    for (const [brand, model, imageUrl] of cars) {
+        carRows.push(
+            await prisma.carModel.upsert({
+                where: { brand_model: { brand, model } },
+                update: { imageUrl },
+                create: { brand, model, imageUrl }
+            })
+        );
+    }
     const dealerRows = [];
     for (const dealer of dealers) {
         const user = await ensureUser({ name: dealer.name, email: dealer.email, phone: dealer.phone, role: "DEALER" });

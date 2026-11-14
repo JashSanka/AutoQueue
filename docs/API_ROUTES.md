@@ -1,6 +1,6 @@
 # API route inventory
 
-All routes are mounted by `server/src/server.js`. Authentication means a `Bearer` JWT. There are 35 API routes (plus `GET /health`). No current frontend screen calls the diagnostic auth routes.
+All routes are mounted by `server/src/server.js`. Authentication means a `Bearer` JWT. There are 36 API routes (plus `GET /health` and public `/uploads/:filename` image files). No current frontend screen calls the diagnostic auth routes.
 
 ## Authentication
 
@@ -20,6 +20,7 @@ All routes are mounted by `server/src/server.js`. Authentication means a `Bearer
 |GET|`/api/cars`|List catalogue|JWT / all|—|200|
 |GET|`/api/cars/:carModelId`|Get car model|JWT / all|UUID path param|200;400,404|
 |PATCH|`/api/cars/:carModelId`|Update car model|JWT / ADMIN|UUID; mutable catalogue fields|200;400,404,409|
+|POST/PATCH|`/api/cars/:carModelId/image`|Upload vehicle catalogue image|JWT / ADMIN|UUID; `imageDataUrl` (PNG, JPEG, WebP up to 4MB)|200;400,404,413|
 |DELETE|`/api/cars/:carModelId`|Delete unreferenced car model|JWT / ADMIN|UUID|200;400,404,409|
 |PATCH|`/api/admin/dealers/:dealerId/verify`|Verify dealership|JWT / ADMIN|dealer UUID|200;400,404,409|
 |GET|`/api/admin/dealers`|List dealer profiles and verification status|JWT / ADMIN|—|200;401,403|
