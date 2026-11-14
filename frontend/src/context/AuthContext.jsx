@@ -60,10 +60,6 @@ export function AuthProvider({ children }) {
         throw new Error('Malformed authentication response from server.');
       }
 
-      if (response.user.role !== 'CUSTOMER') {
-        throw new Error(`Access restricted: Detected ${response.user.role} role. This portal is strictly for customers.`);
-      }
-
       localStorage.setItem(TOKEN_KEY, response.token);
       setToken(response.token);
       setUser(response.user);
