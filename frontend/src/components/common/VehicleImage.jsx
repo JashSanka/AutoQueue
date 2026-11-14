@@ -10,8 +10,10 @@ export function resolveVehicleImageUrl(src) {
   }
 
   // Relative upload paths must point directly to the backend server
+  // Derive the backend origin from the API base URL (strips /api suffix if present)
   if (trimmed.startsWith("/uploads/")) {
-    const backendOrigin = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
+    const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
+    const backendOrigin = apiBase.replace(/\/api$/, "");
     return `${backendOrigin}${trimmed}`;
   }
 
