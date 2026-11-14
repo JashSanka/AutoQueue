@@ -23,9 +23,6 @@ dist_electron
 *.njsproj
 *.sln
 *.sw?
-
-# Environment secrets (do NOT ignore .env.production — Vite needs it for builds)
 .env
+.gitignore
 
-# Generated icon binary — rebuild from favicon.svg using iconutil
-build/icon.icns
