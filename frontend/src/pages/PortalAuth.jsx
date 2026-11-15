@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 
 const labels = { CUSTOMER: "Customer", DEALER: "Dealer", ADMIN: "Administrator" };
@@ -7,6 +7,7 @@ const labels = { CUSTOMER: "Customer", DEALER: "Dealer", ADMIN: "Administrator" 
 export default function PortalAuth({ role, register = false }) {
   const { user, login, register: createAccount } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -19,7 +20,14 @@ export default function PortalAuth({ role, register = false }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to={`/${user.role.toLowerCase()}`} replace />;
+  const from = location.state?.from?.pathname || location.state?.from;
+
+  if (user) {
+    const destination = typeof from === "string" && from.startsWith(`/${user.role.toLowerCase()}`)
+      ? from
+      : `/${user.role.toLowerCase()}`;
+    return <Navigate to={destination} replace />;
+  }
 
   const submit = async (event) => {
     event.preventDefault();
@@ -31,7 +39,10 @@ export default function PortalAuth({ role, register = false }) {
         navigate(`/${role.toLowerCase()}/login`, { state: { email: form.email } });
       } else {
         const signedIn = await login(form.email, form.password, role);
-        navigate(`/${signedIn.role.toLowerCase()}`, { replace: true });
+        const destination = typeof from === "string" && from.startsWith(`/${signedIn.role.toLowerCase()}`)
+          ? from
+          : `/${signedIn.role.toLowerCase()}`;
+        navigate(destination, { replace: true });
       }
     } catch (requestError) {
       setError(requestError.message);

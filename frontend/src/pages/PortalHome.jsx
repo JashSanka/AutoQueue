@@ -68,7 +68,13 @@ export default function PortalHome() {
 
       <footer className="mx-auto max-w-4xl w-full pt-8 border-t border-slate-200 text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-4">
         <p>© {new Date().getFullYear()} AutoQueue. Shared car reservation & inventory queue system.</p>
-        <p className="font-mono text-slate-400">Secure JWT Authentication · Role-Based Access</p>
+        <div className="flex items-center gap-3">
+          <Link to="/admin/login" className="font-mono text-slate-400 hover:text-blue-600 transition-colors">
+            Admin Portal
+          </Link>
+          <span className="text-slate-300">·</span>
+          <p className="font-mono text-slate-400">Role-Based Access</p>
+        </div>
       </footer>
     </main>
   );

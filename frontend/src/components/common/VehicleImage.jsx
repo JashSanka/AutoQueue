@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function resolveVehicleImageUrl(src) {
   if (!src) return null;
   const trimmed = String(src).trim();
@@ -22,11 +23,13 @@ export function resolveVehicleImageUrl(src) {
 
 export default function VehicleImage({ src, alt, className = "" }) {
   const [failed, setFailed] = useState(false);
+  const [prevSrc, setPrevSrc] = useState(src);
   const resolved = resolveVehicleImageUrl(src);
 
-  useEffect(() => {
+  if (prevSrc !== src) {
+    setPrevSrc(src);
     setFailed(false);
-  }, [src]);
+  }
 
   const fallbackSrc = "/images/vehicle-fallback.png";
 

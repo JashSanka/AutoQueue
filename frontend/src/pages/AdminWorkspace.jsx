@@ -145,13 +145,12 @@ export default function AdminWorkspace() {
       <div className="workspace-content">
         {statusMessage && (
           <div
-            className={`p-3 rounded-lg text-sm border ${
-              statusType === "error"
-                ? "bg-red-50 text-red-800 border-red-200"
-                : statusType === "success"
+            className={`p-3 rounded-lg text-sm border ${statusType === "error"
+              ? "bg-red-50 text-red-800 border-red-200"
+              : statusType === "success"
                 ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                 : "bg-blue-50 text-blue-800 border-blue-200"
-            }`}
+              }`}
           >
             {statusMessage}
           </div>
@@ -193,11 +192,10 @@ export default function AdminWorkspace() {
                 <button
                   key={filter}
                   onClick={() => setDealerFilter(filter)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md capitalize transition-colors ${
-                    dealerFilter === filter
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  }`}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md capitalize transition-colors ${dealerFilter === filter
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
                 >
                   {filter} ({filter === "all" ? data.dealers.length : filter === "pending" ? pendingDealersCount : data.dealers.length - pendingDealersCount})
                 </button>
@@ -212,11 +210,10 @@ export default function AdminWorkspace() {
                   <div className="flex items-center gap-2">
                     <strong className="text-slate-900 font-semibold">{dealer.dealerName}</strong>
                     <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-semibold uppercase ${
-                        dealer.verified
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-amber-100 text-amber-800"
-                      }`}
+                      className={`text-[11px] px-2 py-0.5 rounded-full font-semibold uppercase ${dealer.verified
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-amber-100 text-amber-800"
+                        }`}
                     >
                       {dealer.verified ? "Verified" : "Pending Approval"}
                     </span>
@@ -356,11 +353,13 @@ export default function AdminWorkspace() {
 
 function CatalogueCard({ item, token, onRefresh, notify }) {
   const [imageUrl, setImageUrl] = useState(item.imageUrl || "");
+  const [prevImageUrl, setPrevImageUrl] = useState(item.imageUrl || "");
   const [isUpdating, setIsUpdating] = useState(false);
 
-  useEffect(() => {
+  if (item.imageUrl !== prevImageUrl) {
+    setPrevImageUrl(item.imageUrl || "");
     setImageUrl(item.imageUrl || "");
-  }, [item.imageUrl]);
+  }
 
   const handleSaveUrl = async () => {
     setIsUpdating(true);
