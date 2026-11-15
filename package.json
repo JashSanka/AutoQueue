@@ -10,6 +10,9 @@
     "start:frontend": "npm --prefix frontend start",
     "dev:server": "npm --prefix server run dev",
     "dev:frontend": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build"
+    "build": "npm --prefix frontend run build",
+    "electron:dir": "npm --prefix frontend run electron:dir",
+    "electron:package": "npm run build && npm --prefix frontend run electron:package",
+    "electron:zip": "npm run build && npm --prefix frontend run electron:zip"
   }
 }

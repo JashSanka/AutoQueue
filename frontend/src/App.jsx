@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import PortalAuth from './pages/PortalAuth';
 import PortalHome from './pages/PortalHome';
@@ -11,7 +11,7 @@ import { useAuth } from './context/useAuth';
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route path="/" element={<PortalHome />} />
           <Route path="/customer/login" element={<PortalAuth role="CUSTOMER" />} />
@@ -32,7 +32,7 @@ function App() {
           <Route path="/dashboard" element={<RoleHome />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </AuthProvider>
   );
 }

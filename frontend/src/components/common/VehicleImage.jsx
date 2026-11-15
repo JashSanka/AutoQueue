@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function resolveVehicleImageUrl(src) {
   if (!src) return null;
   const trimmed = String(src).trim();
@@ -10,8 +11,10 @@ export function resolveVehicleImageUrl(src) {
   }
 
   // Relative upload paths must point directly to the backend server
+  // Derive the backend origin from the API base URL (strips /api suffix if present)
   if (trimmed.startsWith("/uploads/")) {
-    const backendOrigin = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
+    const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
+    const backendOrigin = apiBase.replace(/\/api$/, "");
     return `${backendOrigin}${trimmed}`;
   }
 
@@ -20,11 +23,13 @@ export function resolveVehicleImageUrl(src) {
 
 export default function VehicleImage({ src, alt, className = "" }) {
   const [failed, setFailed] = useState(false);
+  const [prevSrc, setPrevSrc] = useState(src);
   const resolved = resolveVehicleImageUrl(src);
 
-  useEffect(() => {
+  if (prevSrc !== src) {
+    setPrevSrc(src);
     setFailed(false);
-  }, [src]);
+  }
 
   const fallbackSrc = "/images/vehicle-fallback.png";
 

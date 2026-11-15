@@ -3,10 +3,18 @@ import { loginUser, registerUser as apiRegister, getProfile } from '../api/auth'
 import { AuthContext } from './useAuth';
 
 const TOKEN_KEY = 'autoqueue_jwt_token';
+const USER_KEY = 'autoqueue_user';
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || null);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem(USER_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
@@ -17,7 +25,11 @@ export function AuthProvider({ children }) {
     async function restoreSession() {
       const savedToken = localStorage.getItem(TOKEN_KEY);
       if (!savedToken) {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setUser(null);
+          setToken(null);
+          setIsLoading(false);
+        }
         return;
       }
 
@@ -26,8 +38,10 @@ export function AuthProvider({ children }) {
         if (isMounted && response?.success && response.user) {
           setUser(response.user);
           setToken(savedToken);
+          localStorage.setItem(USER_KEY, JSON.stringify(response.user));
         } else {
           localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
           if (isMounted) {
             setToken(null);
             setUser(null);
@@ -35,10 +49,15 @@ export function AuthProvider({ children }) {
         }
       } catch (err) {
         console.warn('Session verification failed:', err.message);
-        localStorage.removeItem(TOKEN_KEY);
-        if (isMounted) {
-          setToken(null);
-          setUser(null);
+        // Only discard token if it was an explicit auth rejection (401/403)
+        // If it's a temporary network/offline glitch, keep the token to avoid unnecessary logout on reload
+        if (err.status === 401 || err.status === 403) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+          if (isMounted) {
+            setToken(null);
+            setUser(null);
+          }
         }
       } finally {
         if (isMounted) setIsLoading(false);
@@ -64,6 +83,7 @@ export function AuthProvider({ children }) {
       }
 
       localStorage.setItem(TOKEN_KEY, response.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(response.user));
       setToken(response.token);
       setUser(response.user);
       return response.user;
@@ -86,6 +106,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
     setAuthError(null);

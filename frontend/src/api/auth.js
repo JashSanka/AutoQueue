@@ -3,7 +3,7 @@
  * Connects directly to backend Express auth routes (/api/auth)
  */
 
-const API_BASE = '/api/auth';
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL || "/api"}/auth`;
 
 /**
  * Handle HTTP responses and extract json or error messages

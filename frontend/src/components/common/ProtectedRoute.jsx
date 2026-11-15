@@ -18,8 +18,14 @@ export default function ProtectedRoute({ children, roles }) {
     );
   }
 
-  if (!isAuthenticated || (roles && !roles.includes(user?.role))) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isAuthenticated) {
+    const targetRole = roles && roles.length === 1 ? roles[0].toLowerCase() : 'customer';
+    return <Navigate to={`/${targetRole}/login`} state={{ from: location }} replace />;
+  }
+
+  if (roles && !roles.includes(user?.role)) {
+    const userRole = user?.role ? user.role.toLowerCase() : 'customer';
+    return <Navigate to={`/${userRole}`} replace />;
   }
 
   return children;
